@@ -135,6 +135,10 @@ Configure o caminho do Claude, shell, idioma, exclusões, auto-start e toggles.
 
 > No macOS, `Ctrl` = tecla Control física (não Cmd).
 
+#### Colar no terminal Claude
+
+`Ctrl+V` inspeciona a área de transferência: se contiver uma imagem, o CLI executa a colagem de imagem; caso contrário, o texto da área de transferência é colado no prompt (envolto em escapes de bracketed paste, então conteúdo de múltiplas linhas não é submetido automaticamente). Use `Ctrl+Shift+V` para forçar uma colagem de texto puro.
+
 ### 🔗 Acessos Rápidos
 
 - **Menu IDE**: `Tools > Toggle Claude Code`

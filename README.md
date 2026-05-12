@@ -135,6 +135,10 @@ Configure Claude path, shell, language, exclusions, auto-start, and toggles.
 
 > On macOS, `Ctrl` refers to the physical Control key (not Cmd).
 
+#### Paste in the Claude terminal
+
+`Ctrl+V` inspects the system clipboard: if it holds an image, the CLI's image-paste runs; otherwise the clipboard text is pasted into the prompt (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` if you need to force a plain-text paste.
+
 ### 🔗 Quick Access
 
 - **IDE Menu**: `Tools > Toggle Claude Code`
