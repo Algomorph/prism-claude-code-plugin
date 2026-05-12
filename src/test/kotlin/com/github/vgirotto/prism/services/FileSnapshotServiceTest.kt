@@ -144,6 +144,32 @@ class FileSnapshotServiceTest {
     }
 
     @Test
+    fun `excludes wildcard-matched directories`() {
+        engine = TempFileSnapshotEngine(projectDir.absolutePath, listOf("cmake*", "vendor-*"))
+        createFile("src/main.kt", "code")
+        createFile("cmake-build-debug/cache.txt", "x")
+        createFile("third_party/vendor-local/index.js", "x")
+        engine.takeSnapshot()
+
+        assertTrue(engine.hasHash("src/main.kt"))
+        assertFalse(engine.hasHash("cmake-build-debug/cache.txt"))
+        assertFalse(engine.hasHash("third_party/vendor-local/index.js"))
+    }
+
+    @Test
+    fun `ignores recorded changes in wildcard-matched directories`() {
+        engine = TempFileSnapshotEngine(projectDir.absolutePath, listOf("generated-*"))
+        createFile("src/main.kt", "code")
+        engine.takeSnapshot()
+
+        createFile("src/generated-client/model.kt", "generated")
+        engine.recordChange("${projectDir.absolutePath}/src/generated-client/model.kt")
+        val diff = engine.computeDiff()
+
+        assertTrue(diff.changes.isEmpty())
+    }
+
+    @Test
     fun `skips large files over 1MB`() {
         createFile("small.txt", "small")
         createFile("large.bin", "x".repeat(1_100_000))
@@ -406,13 +432,15 @@ class FileSnapshotServiceTest {
     /**
      * Standalone engine mirroring FileSnapshotService with temp files.
      */
-    class TempFileSnapshotEngine(private val basePath: String) {
+    class TempFileSnapshotEngine(
+        private val basePath: String,
+        private val exDirs: List<String> = listOf("node_modules",".git","build","out",".gradle",".idea","target","dist",".next","__pycache__",".venv","vendor",".intellijPlatform",".DS_Store",".cls",".cache"),
+    ) {
         private var hashes = mapOf<String, String>()
         private var tempDir: File? = null
         private val changed = mutableSetOf<String>()
         private val history = mutableListOf<InteractionDiff>()
 
-        private val exDirs = setOf("node_modules",".git","build","out",".gradle",".idea","target","dist",".next","__pycache__",".venv","vendor",".intellijPlatform",".DS_Store",".cls",".cache")
         private val exPats = listOf(Regex(".*\\.iml$"),Regex(".*\\.class$"),Regex(".*\\.jar$"),Regex(".*\\.pyc$"),Regex("\\.DS_Store"))
 
         fun takeSnapshot() {
@@ -446,9 +474,9 @@ class FileSnapshotServiceTest {
 
         private fun copyFiles(dir: File, base: String, td: File, h: MutableMap<String, String>) {
             for (f in (dir.listFiles() ?: return)) {
-                if (f.isDirectory) { if (!exDirs.contains(f.name)) copyFiles(f, base, td, h); continue }
-                if (!f.isFile || f.length() > 1_000_000) continue
                 val r = f.path.removePrefix(base).removePrefix("/")
+                if (f.isDirectory) { if (!excluded(r)) copyFiles(f, base, td, h); continue }
+                if (!f.isFile || f.length() > 1_000_000) continue
                 if (excluded(r)) continue
                 val c = f.readBytes()
                 h[r] = sha256(c)
@@ -516,7 +544,7 @@ class FileSnapshotServiceTest {
             tempDir = null
         }
 
-        private fun excluded(r: String) = exDirs.any { r.startsWith("$it/") || r == it } || exPats.any { it.matches(r) }
+        private fun excluded(r: String) = ExclusionPatternMatcher.matches(r, exDirs) || exPats.any { it.matches(r) }
         private fun empty() = InteractionDiff(0, System.currentTimeMillis(), emptyList())
         private fun sha256(d: ByteArray) = MessageDigest.getInstance("SHA-256").digest(d).joinToString("") { "%02x".format(it) }
     }

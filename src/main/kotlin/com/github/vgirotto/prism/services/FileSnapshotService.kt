@@ -63,8 +63,8 @@ class FileSnapshotService(private val project: Project) : Disposable {
         Regex("\\.DS_Store"),
     )
 
-    private fun getExcludeDirs(): Set<String> =
-        ClaudeSettingsState.getInstance().getExcludedDirSet()
+    private fun getExcludePatterns(): List<String> =
+        ClaudeSettingsState.getInstance().getExcludedPatterns()
 
     private fun getMaxFileSize(): Long =
         ClaudeSettingsState.getInstance().maxFileSizeKb.toLong() * 1024
@@ -325,13 +325,13 @@ class FileSnapshotService(private val project: Project) : Disposable {
     ) {
         val children = dir.listFiles() ?: return
         for (file in children) {
+            val relativePath = file.path.removePrefix(basePath).removePrefix("/")
             if (file.isDirectory) {
-                if (getExcludeDirs().contains(file.name)) continue
+                if (isExcluded(relativePath)) continue
                 fullCopy(file, basePath, tempDir, hashes)
                 continue
             }
             if (!file.isFile || file.length() > getMaxFileSize()) continue
-            val relativePath = file.path.removePrefix(basePath).removePrefix("/")
             if (isExcluded(relativePath)) continue
 
             try {
@@ -437,8 +437,8 @@ class FileSnapshotService(private val project: Project) : Disposable {
     }
 
     private fun isExcluded(path: String): Boolean {
-        val dirs = getExcludeDirs()
-        return dirs.any { path.startsWith("$it/") || path == it } ||
+        val patterns = getExcludePatterns()
+        return ExclusionPatternMatcher.matches(path, patterns) ||
             excludeFilePatterns.any { it.matches(path) }
     }
 
