@@ -27,6 +27,8 @@ import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
 import java.awt.BorderLayout
+import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JLabel
@@ -203,11 +205,24 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                 disposable
             )
 
+            // Ctrl+V: if the clipboard holds an image, forward ^V so the Claude CLI
+            // pastes the image itself; otherwise paste clipboard text wrapped in
+            // bracketed-paste escapes so multi-line content doesn't auto-submit.
+            val smartPasteAction = object : DumbAwareAction() {
+                override fun actionPerformed(e: AnActionEvent) {
+                    handleSmartPaste(project)
+                }
+            }
+            smartPasteAction.registerCustomShortcutSet(
+                CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK)),
+                terminalWidget.component,
+                disposable
+            )
+
             // Register Claude Code CLI shortcut passthroughs
-            // IntelliJ intercepts Ctrl+S/V/Z/O/T/G before they reach the PTY,
+            // IntelliJ intercepts Ctrl+S/Z/O/T/G before they reach the PTY,
             // so we explicitly forward them as control characters.
             val cliShortcuts = mapOf(
-                KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK) to "\u0016",     // Ctrl+V (paste images)
                 KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK) to "\u0013",     // Ctrl+S (stash prompt)
                 KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK) to "\u001A",     // Ctrl+Z (suspend)
                 KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK) to "\u000F",     // Ctrl+O (verbose output)
@@ -372,5 +387,42 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                 .createNotification("Prism", message, NotificationType.ERROR)
                 .notify(project)
         }
+    }
+
+    private fun handleSmartPaste(project: Project) {
+        val clipboard = try {
+            Toolkit.getDefaultToolkit().systemClipboard
+        } catch (e: Exception) {
+            log.debug("System clipboard unavailable", e)
+            return
+        }
+
+        // Image takes priority when both flavors are present (e.g. some screenshot
+        // tools also attach a filename as text). Text paste still has Ctrl+Shift+V
+        // as a fallback; image paste has no other entry point.
+        val hasImage = try {
+            clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)
+        } catch (e: Exception) {
+            false
+        }
+        if (hasImage) {
+            ClaudeProcessManager.getInstance(project).sendText("\u0016")
+            return
+        }
+
+        val text = try {
+            if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
+                clipboard.getData(DataFlavor.stringFlavor) as? String
+            } else null
+        } catch (e: Exception) {
+            log.debug("Failed to read clipboard text", e)
+            null
+        }
+        if (text.isNullOrEmpty()) return
+
+        // Bracketed paste mode: tells the CLI this is pasted content so newlines
+        // are treated as input rather than submit, and key sequences inside the
+        // text aren't interpreted as shortcuts.
+        ClaudeProcessManager.getInstance(project).sendText("\u001b[200~$text\u001b[201~")
     }
 }
