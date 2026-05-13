@@ -137,7 +137,7 @@ Configure o caminho do Claude, shell, idioma, exclusões, auto-start e toggles.
 
 #### Colar no terminal Claude
 
-`Ctrl+V` inspeciona a área de transferência: se contiver uma imagem, o CLI executa a colagem de imagem; caso contrário, o texto da área de transferência é colado no prompt (envolto em escapes de bracketed paste, então conteúdo de múltiplas linhas não é submetido automaticamente). Use `Ctrl+Shift+V` para forçar uma colagem de texto puro.
+`Ctrl+V` inspeciona a área de transferência: se contiver uma imagem, os bytes são gravados em um PNG temporário e o caminho do arquivo é colado no prompt (o Claude anexa o arquivo). Caso contrário, o texto da área de transferência é colado (envolto em escapes de bracketed paste, então conteúdo de múltiplas linhas não é submetido automaticamente). Use `Ctrl+Shift+V` para forçar uma colagem de texto puro.
 
 ### 🔗 Acessos Rápidos
 

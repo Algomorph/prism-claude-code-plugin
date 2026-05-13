@@ -137,7 +137,7 @@ Configure Claude path, shell, language, exclusions, auto-start, and toggles.
 
 #### Paste in the Claude terminal
 
-`Ctrl+V` inspects the system clipboard: if it holds an image, the CLI's image-paste runs; otherwise the clipboard text is pasted into the prompt (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` if you need to force a plain-text paste.
+`Ctrl+V` inspects the system clipboard: if it holds an image, the image bytes are written to a temporary PNG and the file path is pasted into the prompt (Claude attaches the file). Otherwise the clipboard text is pasted (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` if you need to force a plain-text paste.
 
 ### 🔗 Quick Access
 
