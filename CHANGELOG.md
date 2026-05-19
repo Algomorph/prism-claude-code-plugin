@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Ctrl+V**: now pastes whatever is on the clipboard. If the clipboard holds an image, the Claude CLI's image-paste runs (previous behavior); otherwise the clipboard text is pasted into the prompt using bracketed-paste escapes so multi-line content doesn't auto-submit. Force plain-text paste with `Ctrl+Shift+V`.
+
 ## [1.2.0] — 2026-04-17
 
 ### Added
