@@ -12,6 +12,7 @@ import java.util.UUID
 class ClaudeSession(
     val id: String = UUID.randomUUID().toString(),
     var name: String = "Chat",
+    val cli: AgentCli = AgentCli.DEFAULT,
 ) : Disposable {
 
     var process: Process? = null
