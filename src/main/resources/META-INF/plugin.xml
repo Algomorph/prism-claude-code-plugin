@@ -144,7 +144,7 @@
 
     <actions>
         <action id="Prism.Open"
-                class="com.github.vgirotto.prism.actions.OpenClaudeAction"
+                class="com.github.vgirotto.prism.actions.OpenAgentAction"
                 text="Toggle Prism"
                 description="Toggle Prism terminal panel"
                 icon="/icons/prism.svg">
@@ -168,7 +168,7 @@
                 text="Send Selection to Claude"
                 description="Send selected text to Claude Code"
                 icon="/icons/prism.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskClaudeGroup"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskAgentGroup"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift ENTER"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl shift ENTER"/>
         </action>
@@ -178,7 +178,7 @@
                 text="Insert File Reference in Claude"
                 description="Insert @file reference in Claude Code"
                 icon="/icons/prism.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskClaudeGroup"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskAgentGroup"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift K"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl shift K"/>
         </action>
@@ -192,7 +192,7 @@
         </action>
 
         <!-- Ask Claude context menu group -->
-        <group id="Prism.AskClaudeGroup"
+        <group id="Prism.AskAgentGroup"
                text="Ask Claude..."
                description="Send code to Claude with a prompt"
                icon="/icons/prism.svg"

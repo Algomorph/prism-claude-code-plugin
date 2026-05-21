@@ -13,7 +13,7 @@ import com.intellij.openapi.wm.ToolWindowManager
  * Context menu actions for "Ask Claude" submenu in the editor.
  * Each subclass sends the selection with a specific prompt prefix.
  */
-abstract class AskClaudeAction(private val prompt: String) : AnAction() {
+abstract class AskAgentAction(private val prompt: String) : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -51,8 +51,8 @@ abstract class AskClaudeAction(private val prompt: String) : AnAction() {
     }
 }
 
-class ExplainCodeAction : AskClaudeAction(PrismBundle.message("action.explain"))
-class ReviewCodeAction : AskClaudeAction(PrismBundle.message("action.review"))
-class FixCodeAction : AskClaudeAction(PrismBundle.message("action.fix"))
-class GenerateTestsAction : AskClaudeAction(PrismBundle.message("action.tests"))
-class RefactorCodeAction : AskClaudeAction(PrismBundle.message("action.refactor"))
+class ExplainCodeAction : AskAgentAction(PrismBundle.message("action.explain"))
+class ReviewCodeAction : AskAgentAction(PrismBundle.message("action.review"))
+class FixCodeAction : AskAgentAction(PrismBundle.message("action.fix"))
+class GenerateTestsAction : AskAgentAction(PrismBundle.message("action.tests"))
+class RefactorCodeAction : AskAgentAction(PrismBundle.message("action.refactor"))
