@@ -100,7 +100,7 @@
         <toolWindow id="Prism"
                     anchor="bottom"
                     canCloseContents="true"
-                    factoryClass="com.github.vgirotto.prism.toolwindow.ClaudeToolWindowFactory"
+                    factoryClass="com.github.vgirotto.prism.toolwindow.AgentToolWindowFactory"
                     icon="/icons/prism.svg"/>
 
         <!-- Settings -->
@@ -129,7 +129,7 @@
         <!-- Status Bar Widget -->
         <statusBarWidgetFactory
             id="ClaudeCodeStatus"
-            implementation="com.github.vgirotto.prism.toolwindow.ClaudeStatusBarWidgetFactory"
+            implementation="com.github.vgirotto.prism.toolwindow.AgentStatusBarWidgetFactory"
             order="after position"/>
 
         <!-- Notification group -->

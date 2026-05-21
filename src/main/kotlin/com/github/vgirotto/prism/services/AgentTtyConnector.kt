@@ -12,7 +12,7 @@ import java.nio.charset.Charset
  * and monitors reads to detect when Claude finishes responding.
  * Parses initial output to detect model and effort level.
  */
-class ClaudeTtyConnector(
+class AgentTtyConnector(
     process: Process,
     charset: Charset,
     private val onUserInput: (() -> Unit)? = null,

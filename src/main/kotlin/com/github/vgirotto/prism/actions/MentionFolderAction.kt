@@ -1,7 +1,7 @@
 package com.github.vgirotto.prism.actions
 
 import com.github.vgirotto.prism.i18n.ClaudeBundle
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -18,7 +18,7 @@ class MentionFolderAction : AnAction() {
         val contextProvider = ContextProvider.getInstance(project)
         val ref = "@${contextProvider.relativePath(file)} "
 
-        ClaudeProcessManager.getInstance(project).sendText(ref)
+        AgentProcessManager.getInstance(project).sendText(ref)
         ToolWindowManager.getInstance(project).getToolWindow("Prism")?.activate(null)
     }
 

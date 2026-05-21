@@ -24,14 +24,14 @@ class AgentCliTest {
     }
 
     @Test
-    fun `ClaudeSession defaults cli to CLAUDE`() {
-        val session = ClaudeSession()
+    fun `AgentSession defaults cli to CLAUDE`() {
+        val session = AgentSession()
         assertEquals(AgentCli.CLAUDE, session.cli)
     }
 
     @Test
-    fun `ClaudeSession accepts explicit cli`() {
-        val codex = ClaudeSession(cli = AgentCli.CODEX)
+    fun `AgentSession accepts explicit cli`() {
+        val codex = AgentSession(cli = AgentCli.CODEX)
         assertEquals(AgentCli.CODEX, codex.cli)
     }
 }

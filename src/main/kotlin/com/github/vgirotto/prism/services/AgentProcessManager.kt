@@ -1,7 +1,7 @@
 package com.github.vgirotto.prism.services
 
-import com.github.vgirotto.prism.model.ClaudeSession
-import com.github.vgirotto.prism.model.ClaudeSession.SessionState
+import com.github.vgirotto.prism.model.AgentSession
+import com.github.vgirotto.prism.model.AgentSession.SessionState
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -17,12 +17,12 @@ import java.util.TimerTask
 import java.util.concurrent.ConcurrentHashMap
 
 @Service(Service.Level.PROJECT)
-class ClaudeProcessManager(private val project: Project) : Disposable {
+class AgentProcessManager(private val project: Project) : Disposable {
 
-    private val log = Logger.getInstance(ClaudeProcessManager::class.java)
+    private val log = Logger.getInstance(AgentProcessManager::class.java)
 
     /** All active sessions indexed by session ID */
-    private val sessions = ConcurrentHashMap<String, ClaudeSession>()
+    private val sessions = ConcurrentHashMap<String, AgentSession>()
 
     /** The currently focused session (selected tab) */
     @Volatile
@@ -33,7 +33,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
     private val idleListeners = mutableListOf<(String) -> Unit>()
 
     /** Listeners notified when session state changes */
-    private val stateListeners = mutableListOf<(ClaudeSession) -> Unit>()
+    private val stateListeners = mutableListOf<(AgentSession) -> Unit>()
 
     /** Listeners notified when a session process dies unexpectedly */
     private val processDeathListeners = mutableListOf<(String, String) -> Unit>()
@@ -44,10 +44,10 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
     val currentEffort: String get() = activeSession?.effort ?: ""
     val sessionState: SessionState get() = activeSession?.state ?: SessionState.STOPPED
 
-    val activeSession: ClaudeSession? get() = activeSessionId?.let { sessions[it] }
+    val activeSession: AgentSession? get() = activeSessionId?.let { sessions[it] }
 
-    fun getSession(sessionId: String): ClaudeSession? = sessions[sessionId]
-    fun getAllSessions(): List<ClaudeSession> = sessions.values.toList()
+    fun getSession(sessionId: String): AgentSession? = sessions[sessionId]
+    fun getAllSessions(): List<AgentSession> = sessions.values.toList()
 
     data class SessionResult(
         val sessionId: String,
@@ -59,7 +59,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         idleListeners.add(listener)
     }
 
-    fun addStateListener(listener: (ClaudeSession) -> Unit) {
+    fun addStateListener(listener: (AgentSession) -> Unit) {
         stateListeners.add(listener)
     }
 
@@ -76,7 +76,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         sessions[sessionId]?.let { notifyStateListeners(it) }
     }
 
-    private fun notifyStateListeners(session: ClaudeSession) {
+    private fun notifyStateListeners(session: AgentSession) {
         ApplicationManager.getApplication().invokeLater {
             for (l in stateListeners) {
                 try { l(session) } catch (_: Exception) {}
@@ -89,7 +89,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
      * Returns the session result containing the connector for the terminal widget.
      */
     fun createSession(sessionName: String = "Chat"): SessionResult {
-        val session = ClaudeSession(name = sessionName)
+        val session = AgentSession(name = sessionName)
         loadModelFromClaudeSettings(session)
         session.state = SessionState.STARTING
 
@@ -115,7 +115,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             .setInitialRows(40)
             .start()
 
-        val connector = ClaudeTtyConnector(
+        val connector = AgentTtyConnector(
             process = process,
             charset = StandardCharsets.UTF_8,
             onUserInput = { onUserInput(session) },
@@ -164,7 +164,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         return SessionResult(session.id, process, connector)
     }
 
-    private fun onUserInput(session: ClaudeSession) {
+    private fun onUserInput(session: AgentSession) {
         session.userHasInteracted = true
         if (!session.snapshotTakenForCurrentInput) {
             session.snapshotTakenForCurrentInput = true
@@ -180,7 +180,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         }
     }
 
-    private fun onOutputActivity(session: ClaudeSession) {
+    private fun onOutputActivity(session: AgentSession) {
         session.outputActive = true
         if (session.userHasInteracted && !session.idleFiredForCurrentInteraction) {
             val wasWorking = session.state == SessionState.WORKING
@@ -207,14 +207,14 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         }
     }
 
-    private fun onStartupParsed(session: ClaudeSession, model: String, effort: String) {
+    private fun onStartupParsed(session: AgentSession, model: String, effort: String) {
         if (model.isNotEmpty()) session.model = model
         if (effort.isNotEmpty()) session.effort = effort
         log.info("Startup parsed [${session.id}]: model=$model, effort=$effort")
         notifyStateListeners(session)
     }
 
-    private fun loadModelFromClaudeSettings(session: ClaudeSession) {
+    private fun loadModelFromClaudeSettings(session: AgentSession) {
         session.model = ""
         session.effort = "auto" // Claude Code default when effortLevel is not in settings.json
         try {
@@ -235,7 +235,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         }
     }
 
-    private fun startIdleMonitor(session: ClaudeSession) {
+    private fun startIdleMonitor(session: AgentSession) {
         session.idleTimer?.cancel()
         session.idleTimer = Timer("ClaudeIdleMonitor-${session.id}", true)
         session.idleTimer?.scheduleAtFixedRate(object : TimerTask() {
@@ -261,7 +261,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         }, 1000, 500)
     }
 
-    private fun startProcessHealthMonitor(session: ClaudeSession) {
+    private fun startProcessHealthMonitor(session: AgentSession) {
         session.healthTimer?.cancel()
         session.healthTimer = Timer("ClaudeHealthMonitor-${session.id}", true)
         session.healthTimer?.scheduleAtFixedRate(object : TimerTask() {
@@ -370,7 +370,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
     }
 
     companion object {
-        fun getInstance(project: Project): ClaudeProcessManager =
-            project.getService(ClaudeProcessManager::class.java)
+        fun getInstance(project: Project): AgentProcessManager =
+            project.getService(AgentProcessManager::class.java)
     }
 }

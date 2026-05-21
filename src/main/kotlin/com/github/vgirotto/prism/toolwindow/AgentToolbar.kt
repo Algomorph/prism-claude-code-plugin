@@ -2,7 +2,7 @@ package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.ClaudeBundle
 import com.github.vgirotto.prism.model.PromptTemplate
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.github.vgirotto.prism.services.PromptTemplateService
 import com.intellij.icons.AllIcons
@@ -25,7 +25,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import javax.swing.*
 
-class ClaudeToolbar(private val project: Project) : JPanel(BorderLayout()) {
+class AgentToolbar(private val project: Project) : JPanel(BorderLayout()) {
 
     init {
         val mainGroup = DefaultActionGroup().apply {
@@ -40,16 +40,16 @@ class ClaudeToolbar(private val project: Project) : JPanel(BorderLayout()) {
             add(TemplatesAction(project))
         }
 
-        val mainToolbar = ActionManager.getInstance().createActionToolbar("ClaudeToolbar", mainGroup, true).apply {
-            targetComponent = this@ClaudeToolbar
+        val mainToolbar = ActionManager.getInstance().createActionToolbar("AgentToolbar", mainGroup, true).apply {
+            targetComponent = this@AgentToolbar
         }
 
         val rightGroup = DefaultActionGroup().apply {
             add(SettingsAction(project))
         }
 
-        val rightToolbar = ActionManager.getInstance().createActionToolbar("ClaudeToolbarRight", rightGroup, true).apply {
-            targetComponent = this@ClaudeToolbar
+        val rightToolbar = ActionManager.getInstance().createActionToolbar("AgentToolbarRight", rightGroup, true).apply {
+            targetComponent = this@AgentToolbar
         }
 
         add(mainToolbar.component, BorderLayout.WEST)
@@ -106,7 +106,7 @@ private class TemplatesAction(private val project: Project) : AnAction(
         val resolved = PromptTemplateService.getInstance().resolveTemplate(
             template, selection = selection, filePath = filePath,
         )
-        ClaudeProcessManager.getInstance(project).sendText("$resolved\n")
+        AgentProcessManager.getInstance(project).sendText("$resolved\n")
         ToolWindowManager.getInstance(project).getToolWindow("Prism")?.activate(null)
     }
 
@@ -154,7 +154,7 @@ private class ModelAction(private val project: Project) : AnAction(
             )) {
                 add(object : AnAction(model.first, model.second, null), DumbAware {
                     override fun actionPerformed(e: AnActionEvent) {
-                        ClaudeProcessManager.getInstance(project).sendText("/model ${model.first}\r")
+                        AgentProcessManager.getInstance(project).sendText("/model ${model.first}\r")
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 })
@@ -162,7 +162,7 @@ private class ModelAction(private val project: Project) : AnAction(
             addSeparator()
             add(object : AnAction(ClaudeBundle.message("toolbar.model.picker"), ClaudeBundle.message("toolbar.model.picker.desc"), null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    ClaudeProcessManager.getInstance(project).sendText("/model\r")
+                    AgentProcessManager.getInstance(project).sendText("/model\r")
                 }
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
@@ -190,7 +190,7 @@ private class EffortAction(private val project: Project) : AnAction(
             )) {
                 add(object : AnAction(level.first, level.second, null), DumbAware {
                     override fun actionPerformed(e: AnActionEvent) {
-                        ClaudeProcessManager.getInstance(project).sendText("/effort ${level.first}\r")
+                        AgentProcessManager.getInstance(project).sendText("/effort ${level.first}\r")
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 })
@@ -198,7 +198,7 @@ private class EffortAction(private val project: Project) : AnAction(
             addSeparator()
             add(object : AnAction(ClaudeBundle.message("toolbar.effort.picker"), ClaudeBundle.message("toolbar.effort.picker.desc"), null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    ClaudeProcessManager.getInstance(project).sendText("/effort\r")
+                    AgentProcessManager.getInstance(project).sendText("/effort\r")
                 }
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
@@ -214,7 +214,7 @@ private class CostAction(private val project: Project) : AnAction(
     ClaudeBundle.message("toolbar.cost"), ClaudeBundle.message("toolbar.cost.desc"), AllIcons.Actions.Profile
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        ClaudeProcessManager.getInstance(project).sendText("/cost\r")
+        AgentProcessManager.getInstance(project).sendText("/cost\r")
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
@@ -223,7 +223,7 @@ private class ResumeAction(private val project: Project) : AnAction(
     ClaudeBundle.message("toolbar.resume"), ClaudeBundle.message("toolbar.resume.desc"), AllIcons.Actions.Resume
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        ClaudeProcessManager.getInstance(project).sendText("/resume\r")
+        AgentProcessManager.getInstance(project).sendText("/resume\r")
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
@@ -241,7 +241,7 @@ private class CompactAction(private val project: Project) : AnAction(
             AllIcons.Actions.Collapseall
         )
         if (result == Messages.OK) {
-            ClaudeProcessManager.getInstance(project).sendText("/compact\r")
+            AgentProcessManager.getInstance(project).sendText("/compact\r")
         }
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -260,7 +260,7 @@ private class ClearAction(private val project: Project) : AnAction(
             AllIcons.Actions.GC
         )
         if (result == Messages.OK) {
-            ClaudeProcessManager.getInstance(project).sendText("/clear\r")
+            AgentProcessManager.getInstance(project).sendText("/clear\r")
         }
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT

@@ -1,7 +1,7 @@
 package com.github.vgirotto.prism.actions
 
 import com.github.vgirotto.prism.i18n.ClaudeBundle
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -36,7 +36,7 @@ abstract class AskClaudeAction(private val prompt: String) : AnAction() {
             return
         }
 
-        val processManager = ClaudeProcessManager.getInstance(project)
+        val processManager = AgentProcessManager.getInstance(project)
         processManager.sendText(message + "\n")
 
         ToolWindowManager.getInstance(project)

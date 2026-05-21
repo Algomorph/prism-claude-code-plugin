@@ -1,8 +1,8 @@
 package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.ClaudeBundle
-import com.github.vgirotto.prism.model.ClaudeSession.SessionState
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.model.AgentSession.SessionState
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.CustomStatusBarWidget
 import com.intellij.openapi.wm.StatusBar
@@ -17,19 +17,19 @@ import java.awt.Cursor
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
-class ClaudeStatusBarWidgetFactory : StatusBarWidgetFactory {
+class AgentStatusBarWidgetFactory : StatusBarWidgetFactory {
     override fun getId(): String = WIDGET_ID
     override fun getDisplayName(): String = "Prism"
 
     override fun createWidget(project: Project): StatusBarWidget =
-        ClaudeStatusBarWidget(project)
+        AgentStatusBarWidget(project)
 
     companion object {
         const val WIDGET_ID = "ClaudeCodeStatus"
     }
 }
 
-class ClaudeStatusBarWidget(private val project: Project) : CustomStatusBarWidget {
+class AgentStatusBarWidget(private val project: Project) : CustomStatusBarWidget {
 
     private var statusBar: StatusBar? = null
 
@@ -39,7 +39,7 @@ class ClaudeStatusBarWidget(private val project: Project) : CustomStatusBarWidge
         toolTipText = ClaudeBundle.message("status.click.tooltip")
     }
 
-    override fun ID(): String = ClaudeStatusBarWidgetFactory.WIDGET_ID
+    override fun ID(): String = AgentStatusBarWidgetFactory.WIDGET_ID
 
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar
@@ -53,7 +53,7 @@ class ClaudeStatusBarWidget(private val project: Project) : CustomStatusBarWidge
             }
         }.installOn(label)
 
-        ClaudeProcessManager.getInstance(project).addStateListener {
+        AgentProcessManager.getInstance(project).addStateListener {
             updateLabel()
         }
         updateLabel()
@@ -66,7 +66,7 @@ class ClaudeStatusBarWidget(private val project: Project) : CustomStatusBarWidge
     }
 
     private fun updateLabel() {
-        val pm = ClaudeProcessManager.getInstance(project)
+        val pm = AgentProcessManager.getInstance(project)
         val allSessions = pm.getAllSessions()
         val session = pm.activeSession
         val sessionCount = allSessions.size
