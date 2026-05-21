@@ -1,6 +1,7 @@
 package com.github.vgirotto.prism.settings
 
 import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentSettingsState
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.BoundConfigurable
@@ -17,12 +18,6 @@ class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("setting
 
     override fun createPanel() = dslPanel {
         group(PrismBundle.message("settings.group.general")) {
-            row(PrismBundle.message("settings.claude.path")) {
-                textField()
-                    .bindText(settings::claudePath)
-                    .columns(COLUMNS_LARGE)
-                    .comment(PrismBundle.message("settings.claude.path.comment"))
-            }
             row(PrismBundle.message("settings.shell")) {
                 textFieldWithBrowseButton(
                     FileChooserDescriptor(true, false, false, false, false, false)
@@ -35,6 +30,40 @@ class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("setting
             row {
                 checkBox(PrismBundle.message("settings.autostart"))
                     .bindSelected(settings::autoStartOnOpen)
+            }
+            row(PrismBundle.message("settings.default.cli")) {
+                val labels = mapOf(
+                    AgentCli.CLAUDE to "Claude Code",
+                    AgentCli.CODEX to "Codex",
+                )
+                val ordered = AgentCli.values().toList()
+                comboBox(ordered.map { labels.getValue(it) })
+                    .applyToComponent {
+                        selectedIndex = ordered.indexOf(settings.defaultCli).coerceAtLeast(0)
+                    }
+                    .onChanged {
+                        val idx = it.selectedIndex
+                        if (idx >= 0) settings.defaultCli = ordered[idx]
+                    }
+                    .comment(PrismBundle.message("settings.default.cli.comment"))
+            }
+        }
+
+        group(PrismBundle.message("settings.group.claude")) {
+            row(PrismBundle.message("settings.claude.path")) {
+                textField()
+                    .bindText(settings::claudePath)
+                    .columns(COLUMNS_LARGE)
+                    .comment(PrismBundle.message("settings.claude.path.comment"))
+            }
+        }
+
+        group(PrismBundle.message("settings.group.codex")) {
+            row(PrismBundle.message("settings.codex.path")) {
+                textField()
+                    .bindText(settings::codexPath)
+                    .columns(COLUMNS_LARGE)
+                    .comment(PrismBundle.message("settings.codex.path.comment"))
             }
         }
 
