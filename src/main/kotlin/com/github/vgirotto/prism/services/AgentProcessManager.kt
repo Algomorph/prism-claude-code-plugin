@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.services
 
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.AgentSession
 import com.github.vgirotto.prism.model.AgentSession.SessionState
 import com.intellij.openapi.Disposable
@@ -88,13 +89,16 @@ class AgentProcessManager(private val project: Project) : Disposable {
      * Creates a new Claude session with its own PTY process.
      * Returns the session result containing the connector for the terminal widget.
      */
-    fun createSession(sessionName: String = "Chat"): SessionResult {
-        val session = AgentSession(name = sessionName)
-        loadModelFromClaudeSettings(session)
+    fun createSession(
+        sessionName: String = "Chat",
+        cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
+    ): SessionResult {
+        val session = AgentSession(name = sessionName, cli = cli)
+        loadModelFromAgentSettings(session)
         session.state = SessionState.STARTING
 
         val settings = AgentSettingsState.getInstance()
-        val claudePath = settings.claudePath
+        val binaryPath = settings.cliPath(cli)
         val shell = settings.shellPath
 
         val env = HashMap(System.getenv())
@@ -103,7 +107,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
 
         val workDir = project.basePath ?: System.getProperty("user.home")
 
-        log.info("Starting Claude session '${session.name}' [${session.id}]: claude=$claudePath, dir=$workDir")
+        log.info("Starting ${cli.name.lowercase()} session '${session.name}' [${session.id}]: binary=$binaryPath, dir=$workDir")
 
         val command = arrayOf(shell, "-l", "-i")
 
@@ -144,18 +148,18 @@ class AgentProcessManager(private val project: Project) : Disposable {
         startIdleMonitor(session)
         startProcessHealthMonitor(session)
 
-        // Send the claude command after a brief delay for shell init
+        // Send the agent command after a brief delay for shell init
         Thread {
             try {
                 Thread.sleep(500)
                 if (process.isAlive) {
-                    val cmd = "$claudePath\n"
+                    val cmd = "$binaryPath\n"
                     process.outputStream.write(cmd.toByteArray(StandardCharsets.UTF_8))
                     process.outputStream.flush()
-                    log.info("Sent claude command to shell [${session.id}]")
+                    log.info("Sent ${cli.name.lowercase()} command to shell [${session.id}]")
                 }
             } catch (e: Exception) {
-                log.warn("Failed to send claude command [${session.id}]", e)
+                log.warn("Failed to send ${cli.name.lowercase()} command [${session.id}]", e)
             }
         }.start()
 
@@ -214,9 +218,10 @@ class AgentProcessManager(private val project: Project) : Disposable {
         notifyStateListeners(session)
     }
 
-    private fun loadModelFromClaudeSettings(session: AgentSession) {
+    private fun loadModelFromAgentSettings(session: AgentSession) {
         session.model = ""
-        session.effort = "auto" // Claude Code default when effortLevel is not in settings.json
+        session.effort = "auto"
+        if (session.cli != AgentCli.CLAUDE) return
         try {
             val settingsFile = File(System.getProperty("user.home"), ".claude/settings.json")
             if (!settingsFile.exists()) return
