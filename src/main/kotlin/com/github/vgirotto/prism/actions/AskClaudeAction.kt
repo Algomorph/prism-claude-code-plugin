@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -51,8 +51,8 @@ abstract class AskClaudeAction(private val prompt: String) : AnAction() {
     }
 }
 
-class ExplainCodeAction : AskClaudeAction(ClaudeBundle.message("action.explain"))
-class ReviewCodeAction : AskClaudeAction(ClaudeBundle.message("action.review"))
-class FixCodeAction : AskClaudeAction(ClaudeBundle.message("action.fix"))
-class GenerateTestsAction : AskClaudeAction(ClaudeBundle.message("action.tests"))
-class RefactorCodeAction : AskClaudeAction(ClaudeBundle.message("action.refactor"))
+class ExplainCodeAction : AskClaudeAction(PrismBundle.message("action.explain"))
+class ReviewCodeAction : AskClaudeAction(PrismBundle.message("action.review"))
+class FixCodeAction : AskClaudeAction(PrismBundle.message("action.fix"))
+class GenerateTestsAction : AskClaudeAction(PrismBundle.message("action.tests"))
+class RefactorCodeAction : AskClaudeAction(PrismBundle.message("action.refactor"))

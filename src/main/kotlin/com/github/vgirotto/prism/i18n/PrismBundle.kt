@@ -10,14 +10,14 @@ import java.util.ResourceBundle
  * Internationalization bundle for the Prism plugin.
  * Supports en, pt, es with fallback to English (base bundle).
  *
- * The base bundle (ClaudeBundle.properties) is English.
+ * The base bundle (PrismBundle.properties) is English.
  * We use a custom Control to prevent the JVM from falling back to the
  * system locale (which would load _pt on a Portuguese macOS even when
  * the user selected English).
  */
-object ClaudeBundle {
+object PrismBundle {
 
-    private const val BUNDLE_NAME = "messages.ClaudeBundle"
+    private const val BUNDLE_NAME = "messages.PrismBundle"
 
     private var cachedLocale: Locale? = null
     private var cachedBundle: ResourceBundle? = null
@@ -38,7 +38,7 @@ object ClaudeBundle {
         return when (lang) {
             "pt" -> Locale.of("pt")
             "es" -> Locale.of("es")
-            else -> Locale.ROOT // ROOT loads ClaudeBundle.properties (English)
+            else -> Locale.ROOT // ROOT loads PrismBundle.properties (English)
         }
     }
 

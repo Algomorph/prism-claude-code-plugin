@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -25,7 +25,7 @@ class MentionFolderAction : AnAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
-        e.presentation.text = ClaudeBundle.message("action.mention.folder")
+        e.presentation.text = PrismBundle.message("action.mention.folder")
         e.presentation.isEnabledAndVisible =
             e.project != null && e.getData(CommonDataKeys.VIRTUAL_FILE) != null
     }

@@ -196,8 +196,8 @@ class AgentProcessManager(private val project: Project) : Disposable {
                         com.intellij.notification.NotificationGroupManager.getInstance()
                             .getNotificationGroup("Prism")
                             .createNotification(
-                                com.github.vgirotto.prism.i18n.ClaudeBundle.message("notification.title"),
-                                com.github.vgirotto.prism.i18n.ClaudeBundle.message("notification.concurrent.warning", workingCount),
+                                com.github.vgirotto.prism.i18n.PrismBundle.message("notification.title"),
+                                com.github.vgirotto.prism.i18n.PrismBundle.message("notification.concurrent.warning", workingCount),
                                 com.intellij.notification.NotificationType.WARNING
                             )
                             .notify(project)

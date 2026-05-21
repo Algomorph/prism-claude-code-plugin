@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.toolwindow
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
 import com.github.vgirotto.prism.model.ChangeStatus
 import com.github.vgirotto.prism.model.FileDiffEntry
 import com.github.vgirotto.prism.model.InteractionDiff
@@ -47,14 +47,14 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
     init {
         // Actions group: revert file, revert all | refresh
         val actionsGroup = DefaultActionGroup().apply {
-            add(object : AnAction(ClaudeBundle.message("diff.revert.file"), ClaudeBundle.message("diff.revert.file.desc"), AllIcons.Actions.Rollback), DumbAware {
+            add(object : AnAction(PrismBundle.message("diff.revert.file"), PrismBundle.message("diff.revert.file.desc"), AllIcons.Actions.Rollback), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = revertSelectedFile()
                 override fun update(e: AnActionEvent) {
                     e.presentation.isEnabled = isLatestInteraction() && !isSelectedFileReverted()
                 }
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
             })
-            add(object : AnAction(ClaudeBundle.message("diff.revert.all"), ClaudeBundle.message("diff.revert.all.desc"), AllIcons.Actions.Cancel), DumbAware {
+            add(object : AnAction(PrismBundle.message("diff.revert.all"), PrismBundle.message("diff.revert.all.desc"), AllIcons.Actions.Cancel), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = revertAll()
                 override fun update(e: AnActionEvent) {
                     val allReverted = currentDiff?.let { d ->
@@ -66,16 +66,16 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
             })
             addSeparator()
-            add(object : AnAction(ClaudeBundle.message("diff.refresh"), ClaudeBundle.message("diff.refresh.desc"), AllIcons.Actions.Refresh), DumbAware {
+            add(object : AnAction(PrismBundle.message("diff.refresh"), PrismBundle.message("diff.refresh.desc"), AllIcons.Actions.Refresh), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = refreshDiff()
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
-            add(object : AnAction(ClaudeBundle.message("diff.clear"), ClaudeBundle.message("diff.clear.desc"), AllIcons.Actions.GC), DumbAware {
+            add(object : AnAction(PrismBundle.message("diff.clear"), PrismBundle.message("diff.clear.desc"), AllIcons.Actions.GC), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
                     val result = Messages.showYesNoDialog(
                         project,
-                        ClaudeBundle.message("diff.clear.confirm"),
-                        ClaudeBundle.message("diff.clear.title"),
+                        PrismBundle.message("diff.clear.confirm"),
+                        PrismBundle.message("diff.clear.title"),
                         Messages.getQuestionIcon()
                     )
                     if (result == Messages.YES) {
@@ -94,11 +94,11 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
         // Nav buttons using ActionButton (native hover highlight, compact size)
         val buttonSize = Dimension(22, 22)
 
-        val prevAction = object : AnAction(ClaudeBundle.message("diff.previous"), ClaudeBundle.message("diff.previous.desc"), AllIcons.Actions.Back), DumbAware {
+        val prevAction = object : AnAction(PrismBundle.message("diff.previous"), PrismBundle.message("diff.previous.desc"), AllIcons.Actions.Back), DumbAware {
             override fun actionPerformed(e: AnActionEvent) = navigatePrev()
             override fun getActionUpdateThread() = ActionUpdateThread.BGT
         }
-        val nextAction = object : AnAction(ClaudeBundle.message("diff.next"), ClaudeBundle.message("diff.next.desc"), AllIcons.Actions.Forward), DumbAware {
+        val nextAction = object : AnAction(PrismBundle.message("diff.next"), PrismBundle.message("diff.next.desc"), AllIcons.Actions.Forward), DumbAware {
             override fun actionPerformed(e: AnActionEvent) = navigateNext()
             override fun getActionUpdateThread() = ActionUpdateThread.BGT
         }
@@ -133,7 +133,7 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
 
         // File list with file type icons
         fileList.cellRenderer = DiffEntryRenderer(revertedFiles) { currentDiff?.interactionIndex ?: 0 }
-        fileList.emptyText.text = ClaudeBundle.message("diff.no.changes")
+        fileList.emptyText.text = PrismBundle.message("diff.no.changes")
         fileList.selectionMode = ListSelectionModel.SINGLE_SELECTION
         fileList.addListSelectionListener { e ->
             if (!e.valueIsAdjusting) {
@@ -156,7 +156,7 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
     }
 
     private fun showInitialState() {
-        statusLabel.text = ClaudeBundle.message("diff.waiting")
+        statusLabel.text = PrismBundle.message("diff.waiting")
         interactionLabel.text = ""
     }
 
@@ -210,19 +210,19 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
         val isLatest = latest != null && diff.interactionIndex == latest.interactionIndex
 
         if (diff.changes.isEmpty()) {
-            statusLabel.text = ClaudeBundle.message("diff.no.changes")
+            statusLabel.text = PrismBundle.message("diff.no.changes")
         } else {
             for (entry in diff.changes) listModel.addElement(entry)
             val revCount = revertedFiles[diff.interactionIndex]?.size ?: 0
             statusLabel.text = if (revCount > 0)
-                ClaudeBundle.message("diff.files.reverted", diff.changes.size, revCount)
-            else ClaudeBundle.message("diff.files", diff.changes.size)
+                PrismBundle.message("diff.files.reverted", diff.changes.size, revCount)
+            else PrismBundle.message("diff.files", diff.changes.size)
         }
 
         interactionLabel.text = if (diff.interactionIndex > 0) {
             val sessionSuffix = if (diff.sessionName.isNotBlank()) " — ${diff.sessionName}" else ""
-            val label = if (isLatest) ClaudeBundle.message("diff.interaction.last", diff.interactionIndex)
-                        else ClaudeBundle.message("diff.interaction", diff.interactionIndex)
+            val label = if (isLatest) PrismBundle.message("diff.interaction.last", diff.interactionIndex)
+                        else PrismBundle.message("diff.interaction", diff.interactionIndex)
             "$label$sessionSuffix"
         } else ""
     }
@@ -250,7 +250,7 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
         val count = snapshotService.revertInteraction(diff)
         revertedFiles.getOrPut(diff.interactionIndex) { mutableSetOf() }
             .addAll(diff.changes.map { it.path })
-        notify(ClaudeBundle.message("diff.reverted", count, diff.interactionIndex))
+        notify(PrismBundle.message("diff.reverted", count, diff.interactionIndex))
         showDiff(diff)
     }
 
@@ -259,17 +259,17 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
         val idx = currentDiff?.interactionIndex ?: return
         if (snapshotService.revertEntry(entry)) {
             revertedFiles.getOrPut(idx) { mutableSetOf() }.add(entry.path)
-            notify(ClaudeBundle.message("diff.reverted.file", entry.path))
+            notify(PrismBundle.message("diff.reverted.file", entry.path))
             fileList.repaint()
             val revCount = revertedFiles[idx]?.size ?: 0
-            statusLabel.text = ClaudeBundle.message("diff.files.reverted", currentDiff?.changes?.size ?: 0, revCount)
+            statusLabel.text = PrismBundle.message("diff.files.reverted", currentDiff?.changes?.size ?: 0, revCount)
         }
     }
 
     private fun notify(message: String) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup("Prism")
-            .createNotification(ClaudeBundle.message("notification.title"), message, NotificationType.INFORMATION)
+            .createNotification(PrismBundle.message("notification.title"), message, NotificationType.INFORMATION)
             .notify(project)
     }
 

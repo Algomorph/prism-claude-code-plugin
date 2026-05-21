@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.toolwindow
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.AgentSettingsState
 import com.intellij.icons.AllIcons
@@ -62,8 +62,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
         // Toggle action for the Changes panel
         val toggleChangesAction = object : ToggleAction(
-            ClaudeBundle.message("toolwindow.toggle.changes"),
-            if (changesVisible) ClaudeBundle.message("toolwindow.hide.changes") else ClaudeBundle.message("toolwindow.show.changes"),
+            PrismBundle.message("toolwindow.toggle.changes"),
+            if (changesVisible) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes"),
             AllIcons.Actions.PreviewDetails
         ), DumbAware {
             override fun isSelected(e: AnActionEvent): Boolean = changesVisible
@@ -84,12 +84,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
             override fun update(e: AnActionEvent) {
                 super.update(e)
-                e.presentation.text = if (changesVisible) ClaudeBundle.message("toolwindow.hide.changes") else ClaudeBundle.message("toolwindow.show.changes")
+                e.presentation.text = if (changesVisible) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes")
             }
         }
 
         val newSessionAction = object : DumbAwareAction(
-            ClaudeBundle.message("toolwindow.new.session"), ClaudeBundle.message("toolwindow.new.session.desc"), AllIcons.General.Add
+            PrismBundle.message("toolwindow.new.session"), PrismBundle.message("toolwindow.new.session.desc"), AllIcons.General.Add
         ) {
             override fun actionPerformed(e: AnActionEvent) {
                 createSessionTab(project, toolWindow, changesVisible)
@@ -97,7 +97,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         val historyAction = object : DumbAwareAction(
-            ClaudeBundle.message("toolwindow.history"), ClaudeBundle.message("toolwindow.history.desc"), AllIcons.Vcs.History
+            PrismBundle.message("toolwindow.history"), PrismBundle.message("toolwindow.history.desc"), AllIcons.Vcs.History
         ) {
             override fun actionPerformed(e: AnActionEvent) {
                 showHistoryTab(project, toolWindow)
@@ -297,12 +297,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             log.info("Claude session started: $sessionName [${result.sessionId}]")
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
-                            notifyError(project, ClaudeBundle.message("toolwindow.error.terminal", e.message ?: ""))
+                            notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))
                         }
                     }
                 } catch (e: Exception) {
                     log.error("Failed to create Claude process", e)
-                    notifyError(project, ClaudeBundle.message("toolwindow.error.start", e.message ?: ""))
+                    notifyError(project, PrismBundle.message("toolwindow.error.start", e.message ?: ""))
                 }
             }
         } catch (e: Exception) {
@@ -314,7 +314,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {
         for (i in 0 until toolWindow.contentManager.contentCount) {
             val content = toolWindow.contentManager.getContent(i)
-            if (content?.displayName == ClaudeBundle.message("toolwindow.tab.history")) {
+            if (content?.displayName == PrismBundle.message("toolwindow.tab.history")) {
                 toolWindow.contentManager.setSelectedContent(content)
                 return
             }
@@ -322,7 +322,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
         val historyPanel = HistoryPanel(project)
         val content = toolWindow.contentManager.factory.createContent(
-            historyPanel, ClaudeBundle.message("toolwindow.tab.history"), false
+            historyPanel, PrismBundle.message("toolwindow.tab.history"), false
         )
         content.isCloseable = true
         toolWindow.contentManager.addContent(content)
@@ -355,13 +355,13 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     private fun showFallbackContent(project: Project, toolWindow: ToolWindow, error: String) {
         val label = JLabel(
             "<html><center>" +
-                "<h3>${ClaudeBundle.message("toolwindow.error.init")}</h3>" +
-                "<p>${ClaudeBundle.message("toolwindow.error.label", error)}</p>" +
-                "<p>${ClaudeBundle.message("toolwindow.error.settings")}</p>" +
+                "<h3>${PrismBundle.message("toolwindow.error.init")}</h3>" +
+                "<p>${PrismBundle.message("toolwindow.error.label", error)}</p>" +
+                "<p>${PrismBundle.message("toolwindow.error.settings")}</p>" +
                 "</center></html>",
             SwingConstants.CENTER
         )
-        val content = toolWindow.contentManager.factory.createContent(label, ClaudeBundle.message("toolwindow.tab.error"), false)
+        val content = toolWindow.contentManager.factory.createContent(label, PrismBundle.message("toolwindow.tab.error"), false)
         toolWindow.contentManager.addContent(content)
     }
 
