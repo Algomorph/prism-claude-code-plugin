@@ -1,8 +1,10 @@
 package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.PromptTemplate
 import com.github.vgirotto.prism.services.AgentProcessManager
+import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ContextProvider
 import com.github.vgirotto.prism.services.PromptTemplateService
 import com.intellij.icons.AllIcons
@@ -24,6 +26,10 @@ import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import javax.swing.*
+
+internal fun activeAgentCli(project: Project): AgentCli =
+    AgentProcessManager.getInstance(project).activeSession?.cli
+        ?: AgentSettingsState.getInstance().defaultCli
 
 class AgentToolbar(private val project: Project) : JPanel(BorderLayout()) {
 
@@ -171,6 +177,9 @@ private class ModelAction(private val project: Project) : AnAction(
             .createActionPopupMenu("ClaudeModel", group)
         popup.component.show(component, 0, component.height)
     }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.MODEL)
+    }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
@@ -207,6 +216,9 @@ private class EffortAction(private val project: Project) : AnAction(
             .createActionPopupMenu("ClaudeEffort", group)
         popup.component.show(component, 0, component.height)
     }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.EFFORT)
+    }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
@@ -224,6 +236,9 @@ private class ResumeAction(private val project: Project) : AnAction(
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         AgentProcessManager.getInstance(project).sendText("/resume\r")
+    }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.RESUME)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
@@ -244,6 +259,9 @@ private class CompactAction(private val project: Project) : AnAction(
             AgentProcessManager.getInstance(project).sendText("/compact\r")
         }
     }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.COMPACT)
+    }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
@@ -262,6 +280,9 @@ private class ClearAction(private val project: Project) : AnAction(
         if (result == Messages.OK) {
             AgentProcessManager.getInstance(project).sendText("/clear\r")
         }
+    }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.CLEAR)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
