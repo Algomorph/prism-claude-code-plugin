@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.services
 
+import com.github.vgirotto.prism.model.AgentCli
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
@@ -10,6 +11,8 @@ class AgentSettingsStateTest {
         val state = AgentSettingsState.State()
 
         assertEquals("claude", state.claudePath)
+        assertEquals("codex", state.codexPath)
+        assertEquals(AgentCli.DEFAULT, state.defaultCli)
         assertTrue(state.autoStartOnOpen)
         assertNotNull(state.shellPath)
         assertTrue(state.showChangesOnStartup)
@@ -88,5 +91,30 @@ class AgentSettingsStateTest {
         settings.excludedPatterns = ""
 
         assertTrue(settings.getExcludedDirSet().isEmpty())
+    }
+
+    @Test
+    fun `codexPath defaults to codex and is mutable`() {
+        val settings = AgentSettingsState()
+        assertEquals("codex", settings.codexPath)
+        settings.codexPath = "/opt/codex"
+        assertEquals("/opt/codex", settings.state.codexPath)
+    }
+
+    @Test
+    fun `defaultCli defaults to AgentCli DEFAULT and is mutable`() {
+        val settings = AgentSettingsState()
+        assertEquals(AgentCli.DEFAULT, settings.defaultCli)
+        settings.defaultCli = AgentCli.CODEX
+        assertEquals(AgentCli.CODEX, settings.state.defaultCli)
+    }
+
+    @Test
+    fun `cliPath returns the per-CLI executable path`() {
+        val settings = AgentSettingsState()
+        settings.claudePath = "/opt/claude"
+        settings.codexPath = "/opt/codex"
+        assertEquals("/opt/claude", settings.cliPath(AgentCli.CLAUDE))
+        assertEquals("/opt/codex", settings.cliPath(AgentCli.CODEX))
     }
 }
