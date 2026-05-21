@@ -88,13 +88,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
-        val newSessionAction = object : DumbAwareAction(
-            PrismBundle.message("toolwindow.new.session"), PrismBundle.message("toolwindow.new.session.desc"), AllIcons.General.Add
-        ) {
-            override fun actionPerformed(e: AnActionEvent) {
-                createSessionTab(project, toolWindow, changesVisible)
-            }
-        }
+        val newSessionAction = NewSessionPopupAction(
+            project = project,
+            createSessionTab = { cli -> createSessionTab(project, toolWindow, changesVisible, cli) },
+        )
 
         val historyAction = object : DumbAwareAction(
             PrismBundle.message("toolwindow.history"), PrismBundle.message("toolwindow.history.desc"), AllIcons.Vcs.History
@@ -164,11 +161,18 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         project: Project,
         toolWindow: ToolWindow,
         changesVisible: Boolean,
+        cli: com.github.vgirotto.prism.model.AgentCli =
+            com.github.vgirotto.prism.services.AgentSettingsState.getInstance().defaultCli,
     ) {
-        // Validate Claude is available before creating UI
-        val validator = com.github.vgirotto.prism.services.ClaudeValidationService.getInstance()
-        if (!validator.isClaudeAvailable()) {
-            log.warn("Claude CLI not found in PATH")
+        // Validate the requested CLI is available before creating UI
+        val available = when (cli) {
+            com.github.vgirotto.prism.model.AgentCli.CLAUDE ->
+                com.github.vgirotto.prism.services.ClaudeValidationService.getInstance().isClaudeAvailable()
+            com.github.vgirotto.prism.model.AgentCli.CODEX ->
+                com.github.vgirotto.prism.services.CodexValidationService.getInstance().isCodexAvailable()
+        }
+        if (!available) {
+            log.warn("${cli.name.lowercase()} CLI not found in PATH")
             showClaudeNotFoundError(project, toolWindow)
             return
         }
@@ -281,11 +285,11 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             toolWindow.contentManager.addContent(content)
             toolWindow.contentManager.setSelectedContent(content)
 
-            // Start Claude session
+            // Start agent session
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
                     val pm = AgentProcessManager.getInstance(project)
-                    val result = pm.createSession(sessionName)
+                    val result = pm.createSession(sessionName, cli)
 
                     content.putUserData(SESSION_ID_KEY, result.sessionId)
                     pm.setActiveSession(result.sessionId)
