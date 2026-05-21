@@ -2,7 +2,7 @@ package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.ClaudeBundle
 import com.github.vgirotto.prism.services.AgentProcessManager
-import com.github.vgirotto.prism.services.ClaudeSettingsState
+import com.github.vgirotto.prism.services.AgentSettingsState
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -57,7 +57,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         resetCounter()
 
-        var changesVisible = ClaudeSettingsState.getInstance().showChangesOnStartup
+        var changesVisible = AgentSettingsState.getInstance().showChangesOnStartup
         var lastProportion = 0.65f
 
         // Toggle action for the Changes panel
@@ -151,7 +151,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         // Create the first session tab
-        if (ClaudeSettingsState.getInstance().autoStartOnOpen) {
+        if (AgentSettingsState.getInstance().autoStartOnOpen) {
             createSessionTab(project, toolWindow, changesVisible)
         }
     }

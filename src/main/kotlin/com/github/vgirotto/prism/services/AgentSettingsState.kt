@@ -11,7 +11,7 @@ import com.intellij.openapi.components.Storage
     name = "ClaudeCodeWrapperSettings",
     storages = [Storage("ClaudeCodeWrapper.xml")]
 )
-class ClaudeSettingsState : PersistentStateComponent<ClaudeSettingsState.State> {
+class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
 
     data class State(
         var claudePath: String = "claude",
@@ -68,7 +68,7 @@ class ClaudeSettingsState : PersistentStateComponent<ClaudeSettingsState.State> 
         excludedPatterns.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
     companion object {
-        fun getInstance(): ClaudeSettingsState =
-            ApplicationManager.getApplication().getService(ClaudeSettingsState::class.java)
+        fun getInstance(): AgentSettingsState =
+            ApplicationManager.getApplication().getService(AgentSettingsState::class.java)
     }
 }

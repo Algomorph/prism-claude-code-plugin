@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.i18n
 
-import com.github.vgirotto.prism.services.ClaudeSettingsState
+import com.github.vgirotto.prism.services.AgentSettingsState
 import java.text.MessageFormat
 import java.util.Locale
 import java.util.MissingResourceException
@@ -34,7 +34,7 @@ object ClaudeBundle {
     }
 
     fun getLocale(): Locale {
-        val lang = ClaudeSettingsState.getInstance().language
+        val lang = AgentSettingsState.getInstance().language
         return when (lang) {
             "pt" -> Locale.of("pt")
             "es" -> Locale.of("es")

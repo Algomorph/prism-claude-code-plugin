@@ -93,7 +93,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
         loadModelFromClaudeSettings(session)
         session.state = SessionState.STARTING
 
-        val settings = ClaudeSettingsState.getInstance()
+        val settings = AgentSettingsState.getInstance()
         val claudePath = settings.claudePath
         val shell = settings.shellPath
 

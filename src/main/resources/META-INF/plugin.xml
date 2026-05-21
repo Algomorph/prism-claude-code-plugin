@@ -106,13 +106,13 @@
         <!-- Settings -->
         <projectConfigurable
             parentId="tools"
-            instance="com.github.vgirotto.prism.settings.ClaudeSettingsConfigurable"
+            instance="com.github.vgirotto.prism.settings.AgentSettingsConfigurable"
             id="com.github.vgirotto.prism.settings"
             displayName="Prism — Claude Code"/>
 
         <!-- Application-level services -->
         <applicationService
-            serviceImplementation="com.github.vgirotto.prism.services.ClaudeSettingsState"/>
+            serviceImplementation="com.github.vgirotto.prism.services.AgentSettingsState"/>
         <applicationService
             serviceImplementation="com.github.vgirotto.prism.services.PromptTemplateService"/>
 

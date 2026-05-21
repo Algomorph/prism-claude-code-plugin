@@ -1,7 +1,7 @@
 package com.github.vgirotto.prism.settings
 
 import com.github.vgirotto.prism.i18n.ClaudeBundle
-import com.github.vgirotto.prism.services.ClaudeSettingsState
+import com.github.vgirotto.prism.services.AgentSettingsState
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.ui.dsl.builder.COLUMNS_LARGE
@@ -11,9 +11,9 @@ import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel as dslPanel
 
-class ClaudeSettingsConfigurable : BoundConfigurable(ClaudeBundle.message("settings.title")) {
+class AgentSettingsConfigurable : BoundConfigurable(ClaudeBundle.message("settings.title")) {
 
-    private val settings = ClaudeSettingsState.getInstance()
+    private val settings = AgentSettingsState.getInstance()
 
     override fun createPanel() = dslPanel {
         group(ClaudeBundle.message("settings.group.general")) {

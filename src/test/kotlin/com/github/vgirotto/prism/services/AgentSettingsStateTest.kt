@@ -3,11 +3,11 @@ package com.github.vgirotto.prism.services
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
-class ClaudeSettingsStateTest {
+class AgentSettingsStateTest {
 
     @Test
     fun `default state has expected values`() {
-        val state = ClaudeSettingsState.State()
+        val state = AgentSettingsState.State()
 
         assertEquals("claude", state.claudePath)
         assertTrue(state.autoStartOnOpen)
@@ -20,9 +20,9 @@ class ClaudeSettingsStateTest {
 
     @Test
     fun `state properties are mutable`() {
-        val settings = ClaudeSettingsState()
+        val settings = AgentSettingsState()
 
-        settings.loadState(ClaudeSettingsState.State(
+        settings.loadState(AgentSettingsState.State(
             claudePath = "/usr/local/bin/claude",
             autoStartOnOpen = false,
             shellPath = "/bin/bash"
@@ -35,8 +35,8 @@ class ClaudeSettingsStateTest {
 
     @Test
     fun `getState returns current state`() {
-        val settings = ClaudeSettingsState()
-        settings.loadState(ClaudeSettingsState.State(claudePath = "custom-claude"))
+        val settings = AgentSettingsState()
+        settings.loadState(AgentSettingsState.State(claudePath = "custom-claude"))
 
         val state = settings.state
         assertEquals("custom-claude", state.claudePath)
@@ -44,7 +44,7 @@ class ClaudeSettingsStateTest {
 
     @Test
     fun `setting individual properties updates state`() {
-        val settings = ClaudeSettingsState()
+        val settings = AgentSettingsState()
 
         settings.claudePath = "/opt/claude"
         settings.autoStartOnOpen = false
@@ -65,17 +65,17 @@ class ClaudeSettingsStateTest {
 
     @Test
     fun `loadState replaces entire state`() {
-        val settings = ClaudeSettingsState()
+        val settings = AgentSettingsState()
         settings.claudePath = "old"
 
-        settings.loadState(ClaudeSettingsState.State(claudePath = "new"))
+        settings.loadState(AgentSettingsState.State(claudePath = "new"))
 
         assertEquals("new", settings.claudePath)
     }
 
     @Test
     fun `getExcludedDirSet parses comma-separated patterns`() {
-        val settings = ClaudeSettingsState()
+        val settings = AgentSettingsState()
         settings.excludedPatterns = ".git, node_modules , build"
 
         val dirs = settings.getExcludedDirSet()
@@ -84,7 +84,7 @@ class ClaudeSettingsStateTest {
 
     @Test
     fun `getExcludedDirSet handles empty string`() {
-        val settings = ClaudeSettingsState()
+        val settings = AgentSettingsState()
         settings.excludedPatterns = ""
 
         assertTrue(settings.getExcludedDirSet().isEmpty())
