@@ -1,24 +1,26 @@
 <idea-plugin>
     <id>com.github.vgirotto.prism</id>
-    <name>Prism - IDE Companion for Claude Code</name>
+    <name>Prism - IDE Companion for Claude Code and Codex</name>
     <vendor email="VGirotto@users.noreply.github.com" url="https://github.com/VGirotto/prism-claude-code-plugin">VGirotto</vendor>
 
     <description><![CDATA[
     <p><strong>Prism</strong> is a local visual wrapper that integrates the
     <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code CLI</a>
-    directly into your JetBrains IDE. It runs the CLI in a real embedded terminal and makes
-    <strong>no external API calls</strong> — all data stays on your machine.</p>
+    and the <a href="https://developers.openai.com/codex">OpenAI Codex CLI</a>
+    directly into your JetBrains IDE. It runs each CLI in a real embedded terminal
+    and makes <strong>no external API calls</strong> — all data stays on your machine.</p>
 
-    <p>Requires the Claude Code CLI installed and authenticated independently.</p>
+    <p>Requires the Claude Code or Codex CLI installed and authenticated independently.</p>
 
     <h3>Features</h3>
     <ul>
         <li><strong>Interactive Terminal</strong> — Full ANSI color support via PTY (pty4j + JediTerm)</li>
-        <li><strong>Claude Changes Panel</strong> — Per-interaction diff view with history navigation and one-click revert</li>
+        <li><strong>Multi-Agent</strong> — Run Claude Code and Codex sessions side by side; pick at session start</li>
+        <li><strong>Agent Changes Panel</strong> — Per-interaction diff view with history navigation and one-click revert</li>
         <li><strong>Context Menu</strong> — Explain, Review, Fix, Generate Tests, Refactor from the editor</li>
-        <li><strong>Toolbar</strong> — Model (opus/sonnet/haiku), Effort, Cost, Resume, Compact</li>
+        <li><strong>Toolbar</strong> — Model (opus/sonnet/haiku), Effort, Cost, Resume, Compact (Claude); shared Templates, Cost, Settings for every agent</li>
         <li><strong>Prompt Templates</strong> — Reusable templates with {selection}, {file}, {language} variables</li>
-        <li><strong>Conversation History</strong> — Browse and resume past conversations with full-text search</li>
+        <li><strong>Conversation History</strong> — Browse and resume past conversations from the active agent with full-text search</li>
         <li><strong>Multi-Session</strong> — Multiple simultaneous sessions in independent tabs</li>
         <li><strong>Status Bar Widget</strong> — Real-time session state (working/idle/stopped)</li>
         <li><strong>i18n</strong> — English, Portuguese, Spanish</li>
@@ -39,13 +41,23 @@
 
     <h3>Disclaimer</h3>
     <p>Prism is an independent, community-built project — not affiliated with, endorsed by, or
-    sponsored by Anthropic, PBC. "Claude" and "Claude Code" are trademarks of Anthropic, PBC.</p>
+    sponsored by Anthropic, PBC or OpenAI, OpenCo. "Claude" and "Claude Code" are trademarks
+    of Anthropic, PBC. "Codex" is a trademark of OpenAI.</p>
     <p>This software is provided <strong>as-is</strong>, without warranty of any kind.
     See the <a href="https://github.com/VGirotto/prism-claude-code-plugin/blob/main/LICENSE">LICENSE</a>
     for details.</p>
     ]]></description>
 
     <change-notes><![CDATA[
+    <h2>v1.3.0 — Codex Integration</h2>
+    <ul>
+        <li>New: <strong>Multi-agent</strong> — start Claude Code or Codex sessions from the same tool window</li>
+        <li>New: <strong>CLI picker</strong> on the New Session button when more than one agent is installed</li>
+        <li>New: <strong>Default agent</strong> setting and dedicated Codex executable path</li>
+        <li>New: <strong>Codex history</strong> — Conversation History reads sessions from <code>~/.codex/sessions</code></li>
+        <li>Change: Toolbar items wrapping Claude-only slash commands (/resume, /compact, /clear, /model, /effort) are hidden for Codex sessions</li>
+        <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
+    </ul>
     <h2>v1.2.0 — Toolbar & Context Improvements</h2>
     <ul>
         <li>New: <strong>Clear</strong> button in toolbar — sends /clear with confirmation dialog</li>
