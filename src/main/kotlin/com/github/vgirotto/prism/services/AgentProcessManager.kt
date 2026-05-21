@@ -122,6 +122,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
         val connector = AgentTtyConnector(
             process = process,
             charset = StandardCharsets.UTF_8,
+            cli = cli,
             onUserInput = { onUserInput(session) },
             onOutputActivity = { onOutputActivity(session) },
             onStartupParsed = { model, effort -> onStartupParsed(session, model, effort) },
