@@ -1,8 +1,11 @@
 package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.ConversationMessage
 import com.github.vgirotto.prism.model.ConversationSummary
+import com.github.vgirotto.prism.services.AgentProcessManager
+import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ConversationHistoryService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -34,6 +37,11 @@ import javax.swing.*
 class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private val historyService = ConversationHistoryService.getInstance(project)
+
+    /** History is scoped to the active session's CLI; fallback to the configured default. */
+    private fun activeCli(): AgentCli =
+        AgentProcessManager.getInstance(project).activeSession?.cli
+            ?: AgentSettingsState.getInstance().defaultCli
     private val cardLayout = CardLayout()
     private val cardPanel = JPanel(cardLayout)
 
@@ -156,8 +164,9 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     fun loadHistory() {
+        val cli = activeCli()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val conversations = historyService.listConversations()
+            val conversations = historyService.listConversations(cli)
             ApplicationManager.getApplication().invokeLater {
                 listModel.clear()
                 for (conv in conversations) listModel.addElement(conv)
@@ -167,8 +176,9 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun performSearch(query: String) {
+        val cli = activeCli()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val results = historyService.searchConversations(query)
+            val results = historyService.searchConversations(query, cli)
             ApplicationManager.getApplication().invokeLater {
                 listModel.clear()
                 for (conv in results) listModel.addElement(conv)
@@ -181,8 +191,9 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
         val modelShort = summary.model.replace("claude-", "").replace("-", " ")
         detailTitleLabel.text = "${formatDate(summary.startTime)} — $modelShort"
 
+        val cli = activeCli()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val messages = historyService.loadConversation(summary.sessionId)
+            val messages = historyService.loadConversation(summary.sessionId, cli)
             // Collapse tool-only messages and filter empties
             val collapsed = collapseToolMessages(messages)
 
