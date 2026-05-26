@@ -3,6 +3,7 @@ package com.github.vgirotto.prism.toolwindow
 import com.github.vgirotto.prism.i18n.ClaudeBundle
 import com.github.vgirotto.prism.services.ClaudeProcessManager
 import com.github.vgirotto.prism.services.ClaudeSettingsState
+import com.github.vgirotto.prism.services.FileSnapshotService
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -131,18 +132,21 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         })
 
-        // Idle listener: compute NEW diff and show on ALL DiffPanels
+        // Idle listener: compute one new diff off the UI thread, then show it on all DiffPanels.
         ClaudeProcessManager.getInstance(project).addIdleListener {
-            // Compute once on the active tab
-            val activeContent = toolWindow.contentManager.selectedContent
-            val activeDp = activeContent?.getUserData(DIFF_PANEL_KEY)
-            activeDp?.computeAndShowDiff()
+            val panels = (0 until toolWindow.contentManager.contentCount).mapNotNull { i ->
+                toolWindow.contentManager.getContent(i)?.getUserData(DIFF_PANEL_KEY)
+            }
+            if (panels.isEmpty()) return@addIdleListener
 
-            // Refresh other tabs to show the same latest diff
-            for (i in 0 until toolWindow.contentManager.contentCount) {
-                val content = toolWindow.contentManager.getContent(i) ?: continue
-                val dp = content.getUserData(DIFF_PANEL_KEY) ?: continue
-                if (dp != activeDp) dp.refreshDiff()
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val diff = FileSnapshotService.getInstance(project).computeDiff()
+                if (diff.changes.isEmpty()) return@executeOnPooledThread
+
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) return@invokeLater
+                    panels.forEach { it.showDiff(diff) }
+                }
             }
         }
 

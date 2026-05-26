@@ -63,6 +63,10 @@ class FileSnapshotService(private val project: Project) : Disposable {
         Regex("\\.DS_Store"),
     )
 
+    private val mandatoryExcludePatterns = listOf(
+        ".git",
+    )
+
     private fun getExcludePatterns(): List<String> =
         ClaudeSettingsState.getInstance().getExcludedPatterns()
 
@@ -241,11 +245,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
 
         val currentChangedPaths = synchronized(changedPaths) { changedPaths.toSet() }
 
-        val pathsToCheck = if (currentChangedPaths.isNotEmpty()) {
-            currentChangedPaths + snapshotHashes.keys
-        } else {
-            snapshotHashes.keys.toSet()
-        }
+        val pathsToCheck = pathsToCheck(currentChangedPaths)
 
         val checked = mutableSetOf<String>()
         for (relativePath in pathsToCheck) {
@@ -438,8 +438,29 @@ class FileSnapshotService(private val project: Project) : Disposable {
 
     private fun isExcluded(path: String): Boolean {
         val patterns = getExcludePatterns()
-        return ExclusionPatternMatcher.matches(path, patterns) ||
+        return ExclusionPatternMatcher.matches(path, mandatoryExcludePatterns) ||
+            ExclusionPatternMatcher.matches(path, patterns) ||
             excludeFilePatterns.any { it.matches(path) }
+    }
+
+    private fun pathsToCheck(currentChangedPaths: Set<String>): Set<String> {
+        if (currentChangedPaths.isEmpty()) {
+            return snapshotHashes.keys.toSet()
+        }
+
+        val paths = currentChangedPaths.toMutableSet()
+        val basePath = project.basePath ?: return paths
+        for (relativePath in currentChangedPaths) {
+            val projectFile = File(basePath, relativePath)
+            if (projectFile.exists() && !projectFile.isDirectory) continue
+
+            val prefix = relativePath.trimEnd('/') + "/"
+            snapshotHashes.keys
+                .asSequence()
+                .filter { it.startsWith(prefix) }
+                .forEach { paths.add(it) }
+        }
+        return paths
     }
 
     private fun emptyDiff() = InteractionDiff(0, System.currentTimeMillis(), emptyList())

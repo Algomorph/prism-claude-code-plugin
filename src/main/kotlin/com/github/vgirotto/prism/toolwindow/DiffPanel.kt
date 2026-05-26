@@ -10,6 +10,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.ui.Messages
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -162,31 +163,25 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
 
     /**
      * Refresh the display: show the latest diff from history.
-     * Called by idle listener and manual Refresh button.
-     * Only computes a new diff if there isn't one yet (first interaction).
+     * Called by tab selection and the manual Refresh button.
      */
     fun refreshDiff() {
-        project.basePath?.let { base ->
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-                    .findFileByPath(base)?.refresh(false, true)
+        val wasHistoryCleared = historyCleared
+        val shouldShowEmpty = currentDiff == null
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val latest = snapshotService.getLatestDiff()
+            if (latest != null && latest.changes.isNotEmpty()) {
+                showDiffOnEdt(latest) { historyCleared = false }
+                return@executeOnPooledThread
             }
+
+            // After an explicit clear, don't auto-recompute a diff; wait for the next real interaction.
+            if (wasHistoryCleared) return@executeOnPooledThread
+
+            val diff = snapshotService.computeDiff()
+            if (diff.changes.isNotEmpty() || shouldShowEmpty) showDiffOnEdt(diff)
         }
-
-        // Try showing the latest existing diff first
-        val latest = snapshotService.getLatestDiff()
-        if (latest != null && latest.changes.isNotEmpty()) {
-            historyCleared = false
-            showDiff(latest)
-            return
-        }
-
-        // After an explicit clear, don't auto-recompute a diff — wait for the next real interaction
-        if (historyCleared) return
-
-        // No existing diff — try to compute one
-        val diff = snapshotService.computeDiff()
-        if (diff.changes.isNotEmpty() || currentDiff == null) showDiff(diff)
     }
 
     /**
@@ -194,12 +189,18 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
      */
     fun computeAndShowDiff() {
         historyCleared = false
-        project.basePath?.let {
-            com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-                .findFileByPath(it)?.refresh(false, true)
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val diff = snapshotService.computeDiff()
+            if (diff.changes.isNotEmpty()) showDiffOnEdt(diff)
         }
-        val diff = snapshotService.computeDiff()
-        if (diff.changes.isNotEmpty()) showDiff(diff)
+    }
+
+    private fun showDiffOnEdt(diff: InteractionDiff, beforeShow: (() -> Unit)? = null) {
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            beforeShow?.invoke()
+            showDiff(diff)
+        }
     }
 
     fun showDiff(diff: InteractionDiff) {
