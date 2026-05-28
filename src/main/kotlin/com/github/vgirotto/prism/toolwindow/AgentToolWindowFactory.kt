@@ -1,8 +1,11 @@
 package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.AgentSettingsState
+import com.github.vgirotto.prism.services.ClaudeValidationService
+import com.github.vgirotto.prism.services.CodexValidationService
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -161,19 +164,20 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         project: Project,
         toolWindow: ToolWindow,
         changesVisible: Boolean,
-        cli: com.github.vgirotto.prism.model.AgentCli =
-            com.github.vgirotto.prism.services.AgentSettingsState.getInstance().defaultCli,
+        cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
     ) {
-        // Validate the requested CLI is available before creating UI
+        // Validate the requested CLI is available before creating UI.
+        // Uses the user-configured path so custom binary locations are honored.
+        val settings = AgentSettingsState.getInstance()
         val available = when (cli) {
-            com.github.vgirotto.prism.model.AgentCli.CLAUDE ->
-                com.github.vgirotto.prism.services.ClaudeValidationService.getInstance().isClaudeAvailable()
-            com.github.vgirotto.prism.model.AgentCli.CODEX ->
-                com.github.vgirotto.prism.services.CodexValidationService.getInstance().isCodexAvailable()
+            AgentCli.CLAUDE ->
+                ClaudeValidationService.getInstance().isClaudeAvailable(settings.claudePath)
+            AgentCli.CODEX ->
+                CodexValidationService.getInstance().isCodexAvailable(settings.codexPath)
         }
         if (!available) {
-            log.warn("${cli.name.lowercase()} CLI not found in PATH")
-            showClaudeNotFoundError(project, toolWindow)
+            log.warn("${cli.name.lowercase()} CLI not found at configured path or on PATH")
+            showCliNotFoundError(project, toolWindow, cli)
             return
         }
 
@@ -334,15 +338,27 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         historyPanel.loadHistory()
     }
 
-    private fun showClaudeNotFoundError(project: Project, toolWindow: ToolWindow) {
-        val validator = com.github.vgirotto.prism.services.ClaudeValidationService.getInstance()
-        val message = validator.getClaudeNotFoundMessage()
+    private fun showCliNotFoundError(project: Project, toolWindow: ToolWindow, cli: AgentCli) {
+        val (heading, installCmd, notificationTitle, message) = when (cli) {
+            AgentCli.CLAUDE -> CliNotFoundCopy(
+                heading = "Claude not found",
+                installCmd = "npm install -g @anthropic-ai/claude-code",
+                notificationTitle = "Claude Code",
+                message = ClaudeValidationService.getInstance().getClaudeNotFoundMessage(),
+            )
+            AgentCli.CODEX -> CliNotFoundCopy(
+                heading = "Codex not found",
+                installCmd = "npm install -g @openai/codex",
+                notificationTitle = "Codex",
+                message = CodexValidationService.getInstance().getCodexNotFoundMessage(),
+            )
+        }
 
         val label = JLabel(
             "<html><center>" +
-                "<h3>Claude not found</h3>" +
+                "<h3>$heading</h3>" +
                 "<p>Install it with:</p>" +
-                "<code>npm install -g @anthropic-ai/claude-code</code>" +
+                "<code>$installCmd</code>" +
                 "<p>Then restart the IDE</p>" +
                 "</center></html>",
             SwingConstants.CENTER
@@ -352,9 +368,16 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
         NotificationGroupManager.getInstance()
             .getNotificationGroup("Prism")
-            .createNotification("Claude Code", message, NotificationType.ERROR)
+            .createNotification(notificationTitle, message, NotificationType.ERROR)
             .notify(project)
     }
+
+    private data class CliNotFoundCopy(
+        val heading: String,
+        val installCmd: String,
+        val notificationTitle: String,
+        val message: String,
+    )
 
     private fun showFallbackContent(project: Project, toolWindow: ToolWindow, error: String) {
         val label = JLabel(
