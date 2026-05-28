@@ -7,6 +7,7 @@ import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ContextProvider
 import com.github.vgirotto.prism.services.PromptTemplateService
+import com.github.vgirotto.prism.settings.AgentSettingsConfigurable
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -228,6 +229,9 @@ private class CostAction(private val project: Project) : AnAction(
     override fun actionPerformed(e: AnActionEvent) {
         AgentProcessManager.getInstance(project).sendText("/cost\r")
     }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.COST)
+    }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
@@ -291,9 +295,7 @@ private class SettingsAction(private val project: Project) : AnAction(
     PrismBundle.message("toolbar.settings"), PrismBundle.message("toolbar.settings.desc"), AllIcons.General.Settings
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        ShowSettingsUtil.getInstance().showSettingsDialog(
-            project, "Prism \u2014 Claude Code"
-        )
+        ShowSettingsUtil.getInstance().showSettingsDialog(project, AgentSettingsConfigurable::class.java)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
