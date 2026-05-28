@@ -63,4 +63,89 @@ class CliBinaryLocatorTest {
         assertEquals("/abs/path", CliBinaryLocator.expandHome("/abs/path"))
         assertEquals("relative/path", CliBinaryLocator.expandHome("relative/path"))
     }
+
+    @Test
+    fun `resolve accepts a custom absolute path outside the candidate list`(@TempDir tmp: Path) {
+        val custom = tmp.resolve("custom-cli")
+        Files.writeString(custom, "#!/bin/sh\nexit 0\n")
+        custom.toFile().setExecutable(true)
+
+        val locator = CliBinaryLocator(
+            binaryName = "fake-cli",
+            candidatePaths = listOf("/definitely/missing/fake-cli"),
+        )
+
+        assertEquals(custom.toString(), locator.resolve(custom.toString()))
+        assertTrue(locator.canResolve(custom.toString()))
+    }
+
+    @Test
+    fun `resolve rejects a configured absolute path that doesn't exist`() {
+        val locator = CliBinaryLocator(
+            binaryName = "fake-cli",
+            candidatePaths = listOf("/definitely/missing/fake-cli"),
+        )
+        assertNull(locator.resolve("/no/such/binary"))
+        assertFalse(locator.canResolve("/no/such/binary"))
+    }
+
+    @Test
+    fun `resolve expands leading tilde in configured path`(@TempDir tmp: Path) {
+        // We can only meaningfully test this if the candidate path lives under user.home;
+        // fall back to a plain path-exists assertion otherwise.
+        val home = System.getProperty("user.home")
+        val custom = tmp.resolve("custom-cli")
+        Files.writeString(custom, "#!/bin/sh\nexit 0\n")
+        custom.toFile().setExecutable(true)
+
+        val locator = CliBinaryLocator(binaryName = "fake-cli", candidatePaths = emptyList())
+
+        if (custom.toString().startsWith(home)) {
+            val withTilde = "~" + custom.toString().removePrefix(home)
+            assertEquals(custom.toString(), locator.resolve(withTilde))
+        } else {
+            assertEquals(custom.toString(), locator.resolve(custom.toString()))
+        }
+    }
+
+    @Test
+    fun `resolve falls back to candidate paths when configured value equals default name`(@TempDir tmp: Path) {
+        val fake = tmp.resolve("fake-cli")
+        Files.writeString(fake, "#!/bin/sh\nexit 0\n")
+        fake.toFile().setExecutable(true)
+
+        val locator = CliBinaryLocator(
+            binaryName = "fake-cli",
+            candidatePaths = listOf(fake.toString()),
+        )
+        // configuredPath == default → locate() path returns the candidate hit.
+        assertEquals(fake.toString(), locator.resolve("fake-cli"))
+    }
+
+    @Test
+    fun `resolve falls back to candidate paths when configured value is blank`(@TempDir tmp: Path) {
+        val fake = tmp.resolve("fake-cli")
+        Files.writeString(fake, "#!/bin/sh\nexit 0\n")
+        fake.toFile().setExecutable(true)
+
+        val locator = CliBinaryLocator(
+            binaryName = "fake-cli",
+            candidatePaths = listOf(fake.toString()),
+        )
+        assertEquals(fake.toString(), locator.resolve(""))
+        assertEquals(fake.toString(), locator.resolve("   "))
+    }
+
+    @Test
+    fun `resolve looks up bare name override via PATH`() {
+        // `sh` is present on every POSIX system; use it as a stand-in override
+        // for a configured bare-name binary that differs from the default.
+        val locator = CliBinaryLocator(
+            binaryName = "fake-cli",
+            candidatePaths = listOf("/nonexistent/fake-cli"),
+        )
+        val resolved = locator.resolve("sh")
+        assertNotNull(resolved)
+        assertTrue(resolved!!.endsWith("/sh"))
+    }
 }

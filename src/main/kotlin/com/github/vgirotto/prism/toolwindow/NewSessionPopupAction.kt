@@ -66,9 +66,10 @@ class NewSessionPopupAction(
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     private fun installedCliS(): List<AgentCli> {
+        val settings = AgentSettingsState.getInstance()
         val list = mutableListOf<AgentCli>()
-        if (ClaudeValidationService.getInstance().isClaudeAvailable()) list.add(AgentCli.CLAUDE)
-        if (CodexValidationService.getInstance().isCodexAvailable()) list.add(AgentCli.CODEX)
+        if (ClaudeValidationService.getInstance().isClaudeAvailable(settings.claudePath)) list.add(AgentCli.CLAUDE)
+        if (CodexValidationService.getInstance().isCodexAvailable(settings.codexPath)) list.add(AgentCli.CODEX)
         return list
     }
 }

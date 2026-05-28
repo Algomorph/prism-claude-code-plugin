@@ -30,4 +30,23 @@ class CodexValidationServiceTest {
             assertTrue(file.canExecute(), "Reported codex path should be executable: $path")
         }
     }
+
+    @Test
+    fun `isCodexAvailable honors a configured absolute path`(@org.junit.jupiter.api.io.TempDir tmp: java.nio.file.Path) {
+        val custom = tmp.resolve("custom-codex")
+        java.nio.file.Files.writeString(custom, "#!/bin/sh\nexit 0\n")
+        custom.toFile().setExecutable(true)
+
+        assertTrue(
+            validator.isCodexAvailable(custom.toString()),
+            "Validator should accept a user-configured absolute path outside known locations",
+        )
+        assertEquals(custom.toString(), validator.getCodexPath(custom.toString()))
+    }
+
+    @Test
+    fun `isCodexAvailable rejects a configured path that doesn't exist`() {
+        assertFalse(validator.isCodexAvailable("/no/such/codex/binary"))
+        assertNull(validator.getCodexPath("/no/such/codex/binary"))
+    }
 }

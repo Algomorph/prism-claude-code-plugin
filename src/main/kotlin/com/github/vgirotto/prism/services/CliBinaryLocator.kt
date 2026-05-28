@@ -28,24 +28,47 @@ class CliBinaryLocator(
                 return expanded
             }
         }
-        return whichOnPath()
+        return whichOnPath(binaryName)
     }
 
     /** True if [locate] would return a non-null path. */
     fun exists(): Boolean = locate() != null
 
-    private fun whichOnPath(): String? {
+    /**
+     * Resolves a user-configured CLI path entry from settings:
+     *   - blank or equal to the default [binaryName] → fall back to [locate].
+     *   - contains a `/` (or `~`) → treat as a filesystem path and check
+     *     directly (after expanding `~`).
+     *   - bare name (different from the default) → `which` lookup using
+     *     that name; candidate paths are skipped since they're tied to
+     *     the default binary.
+     */
+    fun resolve(configuredPath: String): String? {
+        val trimmed = configuredPath.trim()
+        if (trimmed.isEmpty() || trimmed == binaryName) return locate()
+        val expanded = expandHome(trimmed)
+        if (expanded.contains('/')) {
+            val file = File(expanded)
+            return if (file.exists() && file.canExecute()) expanded else null
+        }
+        return whichOnPath(trimmed)
+    }
+
+    /** True if [resolve] would return a non-null path for [configuredPath]. */
+    fun canResolve(configuredPath: String): Boolean = resolve(configuredPath) != null
+
+    private fun whichOnPath(name: String): String? {
         return try {
-            val process = ProcessBuilder("which", binaryName).start()
+            val process = ProcessBuilder("which", name).start()
             val completed = process.waitFor(5, TimeUnit.SECONDS)
             if (completed && process.exitValue() == 0) {
                 val path = process.inputStream.bufferedReader().readText().trim()
                 path.takeIf { it.isNotEmpty() }?.also {
-                    log.debug("Found $binaryName via which: $it")
+                    log.debug("Found $name via which: $it")
                 }
             } else null
         } catch (e: Exception) {
-            log.debug("which lookup failed for $binaryName", e)
+            log.debug("which lookup failed for $name", e)
             null
         }
     }
