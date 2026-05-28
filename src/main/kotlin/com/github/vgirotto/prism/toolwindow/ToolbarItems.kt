@@ -26,7 +26,6 @@ private val CLAUDE_ITEMS: Set<ToolbarItem> = ToolbarItem.values().toSet()
 
 private val CODEX_ITEMS: Set<ToolbarItem> = setOf(
     ToolbarItem.TEMPLATES,
-    ToolbarItem.COST,
     ToolbarItem.SETTINGS,
 )
 

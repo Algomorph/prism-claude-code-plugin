@@ -21,6 +21,9 @@ class ToolbarItemsTest {
             ToolbarItem.CLEAR,
             ToolbarItem.MODEL,
             ToolbarItem.EFFORT,
+            // /cost is a Claude-only slash command; Codex sessions shouldn't see it
+            // since clicking it would send /cost into the Codex PTY.
+            ToolbarItem.COST,
         )) {
             assertFalse(claudeOnly in items, "Codex should not expose $claudeOnly")
         }
@@ -30,7 +33,6 @@ class ToolbarItemsTest {
     fun `Codex still exposes universal items`() {
         val items = toolbarItemsFor(AgentCli.CODEX)
         assertTrue(ToolbarItem.TEMPLATES in items)
-        assertTrue(ToolbarItem.COST in items)
         assertTrue(ToolbarItem.SETTINGS in items)
     }
 
