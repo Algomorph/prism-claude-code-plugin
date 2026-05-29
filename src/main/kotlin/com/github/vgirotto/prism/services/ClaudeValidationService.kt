@@ -1,7 +1,6 @@
 package com.github.vgirotto.prism.services
 
 import com.intellij.openapi.diagnostic.Logger
-import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -11,92 +10,31 @@ class ClaudeValidationService {
 
     private val log = Logger.getInstance(ClaudeValidationService::class.java)
 
-    /**
-     * Standard paths where Claude CLI is commonly installed.
-     * Checks in order:
-     * 1. ~/.local/bin/claude (npm install -g default on Linux/Mac)
-     * 2. ~/.npm-global/bin/claude (npm global directory alternativo)
-     * 3. /usr/local/bin/claude (Homebrew on Intel Mac)
-     * 4. /opt/homebrew/bin/claude (Homebrew on Apple Silicon Mac)
-     * 5. Fallback: `which claude` via PATH
-     */
-    private val CLAUDE_PATHS = listOf(
-        "~/.local/bin/claude",
-        "~/.npm-global/bin/claude",
-        "/usr/local/bin/claude",
-        "/opt/homebrew/bin/claude",
-        "/usr/bin/claude"
+    private val locator = CliBinaryLocator(
+        binaryName = "claude",
+        candidatePaths = listOf(
+            "~/.local/bin/claude",       // npm install -g default on Linux/Mac
+            "~/.npm-global/bin/claude",  // alternative npm global directory
+            "/usr/local/bin/claude",     // Homebrew on Intel Mac
+            "/opt/homebrew/bin/claude",  // Homebrew on Apple Silicon Mac
+            "/usr/bin/claude",
+        ),
     )
 
-    /**
-     * Checks if Claude CLI is available in known locations or PATH.
-     * @return true if `claude` command exists and is executable
-     */
-    fun isClaudeAvailable(): Boolean {
-        // First, check known installation paths
-        for (path in CLAUDE_PATHS) {
-            val expandedPath = expandHome(path)
-            if (File(expandedPath).exists() && File(expandedPath).canExecute()) {
-                log.debug("Found Claude at: $expandedPath")
-                return true
-            }
-        }
-
-        // Fallback: use `which` to search PATH
-        return try {
-            val process = ProcessBuilder("which", "claude").start()
-            val completed = process.waitFor(5, TimeUnit.SECONDS)
-            completed && process.exitValue() == 0
-        } catch (e: Exception) {
-            log.debug("Claude availability check failed", e)
-            false
-        }
-    }
+    /** True if the Claude CLI is available in known locations or on PATH. */
+    fun isClaudeAvailable(): Boolean = locator.exists()
 
     /**
-     * Gets the full path to Claude CLI if available.
-     * Searches in known locations first, then falls back to `which`.
-     * @return path to claude executable, or null if not found
+     * True if [configuredPath] (typically [AgentSettingsState.claudePath])
+     * resolves to a runnable binary, either directly or via PATH lookup.
      */
-    fun getClaudePath(): String? {
-        // First, check known installation paths
-        for (path in CLAUDE_PATHS) {
-            val expandedPath = expandHome(path)
-            val file = File(expandedPath)
-            if (file.exists() && file.canExecute()) {
-                log.debug("Found Claude at known path: $expandedPath")
-                return expandedPath
-            }
-        }
+    fun isClaudeAvailable(configuredPath: String): Boolean = locator.canResolve(configuredPath)
 
-        // Fallback: use `which` to search PATH
-        return try {
-            val process = ProcessBuilder("which", "claude").start()
-            val completed = process.waitFor(5, TimeUnit.SECONDS)
-            if (completed && process.exitValue() == 0) {
-                val path = process.inputStream.bufferedReader().readText().trim()
-                if (path.isNotEmpty()) {
-                    log.debug("Found Claude via which: $path")
-                    path
-                } else null
-            } else null
-        } catch (e: Exception) {
-            log.debug("Failed to get Claude path", e)
-            null
-        }
-    }
+    /** Full path to the Claude CLI, or null if it cannot be located. */
+    fun getClaudePath(): String? = locator.locate()
 
-    /**
-     * Expands ~ to user home directory.
-     */
-    private fun expandHome(path: String): String {
-        return if (path.startsWith("~")) {
-            val userHome = System.getProperty("user.home")
-            path.replaceFirst("~", userHome)
-        } else {
-            path
-        }
-    }
+    /** Resolves [configuredPath] to a runnable binary, or null if it cannot. */
+    fun getClaudePath(configuredPath: String): String? = locator.resolve(configuredPath)
 
     /**
      * Validates Claude CLI version (basic check that it responds to help).

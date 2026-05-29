@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.model
 
-import com.github.vgirotto.prism.services.ClaudeTtyConnector
+import com.github.vgirotto.prism.services.AgentTtyConnector
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import java.util.Timer
@@ -9,13 +9,14 @@ import java.util.UUID
 /**
  * Represents a single Claude Code session with its own process, state, and metadata.
  */
-class ClaudeSession(
+class AgentSession(
     val id: String = UUID.randomUUID().toString(),
     var name: String = "Chat",
+    val cli: AgentCli = AgentCli.DEFAULT,
 ) : Disposable {
 
     var process: Process? = null
-    var connector: ClaudeTtyConnector? = null
+    var connector: AgentTtyConnector? = null
     var idleTimer: Timer? = null
     var healthTimer: Timer? = null
 

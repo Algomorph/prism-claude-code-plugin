@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.toolwindow.ClaudeToolWindowFactory
+import com.github.vgirotto.prism.toolwindow.AgentToolWindowFactory
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.Logger
@@ -15,7 +15,7 @@ class NewSessionAction : AnAction() {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Prism") ?: return
 
         toolWindow.show {
-            val factory = ClaudeToolWindowFactory()
+            val factory = AgentToolWindowFactory()
             factory.createSessionTab(project, toolWindow, true)
         }
     }

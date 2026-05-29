@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.services
 
+import com.github.vgirotto.prism.model.AgentCli
 import com.jediterm.core.util.TermSize
 import com.jediterm.terminal.ProcessTtyConnector
 import com.pty4j.PtyProcess
@@ -7,18 +8,36 @@ import com.pty4j.WinSize
 import java.nio.charset.Charset
 
 /**
- * TtyConnector that wraps a PtyProcess for Claude Code.
+ * TtyConnector that wraps a PtyProcess for an agent CLI.
  * Intercepts writes to detect when the user sends a message (Enter key),
- * and monitors reads to detect when Claude finishes responding.
- * Parses initial output to detect model and effort level.
+ * and monitors reads to detect when the agent finishes responding.
+ * Parses initial output to detect model and effort/reasoning level using
+ * a CLI-specific [BannerParser].
  */
-class ClaudeTtyConnector(
+class AgentTtyConnector(
     process: Process,
     charset: Charset,
     private val onUserInput: (() -> Unit)? = null,
     private val onOutputActivity: (() -> Unit)? = null,
     private val onStartupParsed: ((model: String, effort: String) -> Unit)? = null,
+    private val bannerParser: BannerParser = ClaudeBannerParser,
 ) : ProcessTtyConnector(process, charset) {
+
+    constructor(
+        process: Process,
+        charset: Charset,
+        cli: AgentCli,
+        onUserInput: (() -> Unit)? = null,
+        onOutputActivity: (() -> Unit)? = null,
+        onStartupParsed: ((model: String, effort: String) -> Unit)? = null,
+    ) : this(
+        process = process,
+        charset = charset,
+        onUserInput = onUserInput,
+        onOutputActivity = onOutputActivity,
+        onStartupParsed = onStartupParsed,
+        bannerParser = BannerParser.forCli(cli),
+    )
 
     @Volatile
     private var lastOutputTime = 0L
@@ -128,34 +147,11 @@ class ClaudeTtyConnector(
     }
 
     private fun tryParseModel() {
-        // Strip ALL escape sequences and control characters
-        val raw = startupBuffer.toString()
-        val text = raw
-            .replace(Regex("\u001B\\[[0-9;]*[a-zA-Z]"), "")      // CSI: \e[...m
-            .replace(Regex("\u001B\\][^\u0007\u001B]*[\u0007]"), "") // OSC: \e]...BEL
-            .replace(Regex("\u001B[^\\[\\]]."), "")                // Other 2-char escapes
-            .replace(Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]"), "") // Control chars
-
-        var model = ""
-        var effort = ""
-
-        // Parse model: "Opus 4.6" / "Sonnet 4.6" / "Haiku 4.5"
-        val modelRegex = Regex("(Opus|Sonnet|Haiku)\\s+[\\d.]+", RegexOption.IGNORE_CASE)
-        modelRegex.find(text)?.let { match ->
-            model = match.value.split("\\s+".toRegex())[0].lowercase()
-        }
-
-        // Parse effort: "with X effort"
-        val effortRegex = Regex("with\\s+(\\w+)\\s+effort", RegexOption.IGNORE_CASE)
-        effortRegex.find(text)?.let { match ->
-            effort = match.groupValues[1].lowercase()
-        }
-
-        if (model.isNotEmpty() || effort.isNotEmpty()) {
-            startupParsed = true
-            startupBuffer.clear()
-            onStartupParsed?.invoke(model, effort)
-        }
+        val parsed = bannerParser.parse(startupBuffer.toString()) ?: return
+        val (model, effort) = parsed
+        startupParsed = true
+        startupBuffer.clear()
+        onStartupParsed?.invoke(model, effort)
     }
 
     fun getIdleTimeMs(): Long {

@@ -1,8 +1,11 @@
 package com.github.vgirotto.prism.toolwindow
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.ConversationMessage
 import com.github.vgirotto.prism.model.ConversationSummary
+import com.github.vgirotto.prism.services.AgentProcessManager
+import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ConversationHistoryService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -34,6 +37,11 @@ import javax.swing.*
 class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private val historyService = ConversationHistoryService.getInstance(project)
+
+    /** History is scoped to the active session's CLI; fallback to the configured default. */
+    private fun activeCli(): AgentCli =
+        AgentProcessManager.getInstance(project).activeSession?.cli
+            ?: AgentSettingsState.getInstance().defaultCli
     private val cardLayout = CardLayout()
     private val cardPanel = JPanel(cardLayout)
 
@@ -88,7 +96,7 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
 
         val toolbarGroup = DefaultActionGroup().apply {
-            add(object : AnAction(ClaudeBundle.message("history.refresh"), ClaudeBundle.message("history.refresh.desc"), AllIcons.Actions.Refresh), DumbAware {
+            add(object : AnAction(PrismBundle.message("history.refresh"), PrismBundle.message("history.refresh.desc"), AllIcons.Actions.Refresh), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = loadHistory()
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
@@ -125,7 +133,7 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
         val detailPanel = JPanel(BorderLayout())
 
         val detailToolbar = DefaultActionGroup().apply {
-            add(object : AnAction(ClaudeBundle.message("history.back"), ClaudeBundle.message("history.back.desc"), AllIcons.Actions.Back), DumbAware {
+            add(object : AnAction(PrismBundle.message("history.back"), PrismBundle.message("history.back.desc"), AllIcons.Actions.Back), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
                     cardLayout.show(cardPanel, "list")
                 }
@@ -156,23 +164,25 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     fun loadHistory() {
+        val cli = activeCli()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val conversations = historyService.listConversations()
+            val conversations = historyService.listConversations(cli)
             ApplicationManager.getApplication().invokeLater {
                 listModel.clear()
                 for (conv in conversations) listModel.addElement(conv)
-                statusLabel.text = ClaudeBundle.message("history.conversations", conversations.size)
+                statusLabel.text = PrismBundle.message("history.conversations", conversations.size)
             }
         }
     }
 
     private fun performSearch(query: String) {
+        val cli = activeCli()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val results = historyService.searchConversations(query)
+            val results = historyService.searchConversations(query, cli)
             ApplicationManager.getApplication().invokeLater {
                 listModel.clear()
                 for (conv in results) listModel.addElement(conv)
-                statusLabel.text = ClaudeBundle.message("history.results", results.size)
+                statusLabel.text = PrismBundle.message("history.results", results.size)
             }
         }
     }
@@ -181,8 +191,9 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
         val modelShort = summary.model.replace("claude-", "").replace("-", " ")
         detailTitleLabel.text = "${formatDate(summary.startTime)} — $modelShort"
 
+        val cli = activeCli()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val messages = historyService.loadConversation(summary.sessionId)
+            val messages = historyService.loadConversation(summary.sessionId, cli)
             // Collapse tool-only messages and filter empties
             val collapsed = collapseToolMessages(messages)
 
@@ -293,7 +304,7 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
 
         val modelShort = summary.model.replace("claude-", "").replace("-", " ")
-        val meta = JBLabel("${formatDate(summary.startTime)} · ${ClaudeBundle.message("history.messages", msgCount)} · $modelShort").apply {
+        val meta = JBLabel("${formatDate(summary.startTime)} · ${PrismBundle.message("history.messages", msgCount)} · $modelShort").apply {
             foreground = META_FG
             font = font.deriveFont(font.size - 1f)
             horizontalAlignment = SwingConstants.CENTER
@@ -331,7 +342,7 @@ class HistoryPanel(private val project: Project) : JPanel(BorderLayout()) {
         val header = SimpleColoredComponent().apply {
             isOpaque = false
             val roleFg = if (isUser) USER_LABEL_FG else ASSISTANT_LABEL_FG
-            val roleLabel = if (isUser) ClaudeBundle.message("history.role.you") else ClaudeBundle.message("history.role.claude")
+            val roleLabel = if (isUser) PrismBundle.message("history.role.you") else PrismBundle.message("history.role.claude")
             val time = TIME_FORMATTER.format(msg.timestamp.atZone(ZoneId.systemDefault()))
             append(roleLabel, SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, roleFg))
             append("  $time", SimpleTextAttributes(SimpleTextAttributes.STYLE_SMALLER, META_FG))

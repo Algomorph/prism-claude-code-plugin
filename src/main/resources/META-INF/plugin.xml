@@ -1,24 +1,26 @@
 <idea-plugin>
     <id>com.github.vgirotto.prism</id>
-    <name>Prism - IDE Companion for Claude Code</name>
+    <name>Prism - IDE Companion for Claude Code and Codex</name>
     <vendor email="VGirotto@users.noreply.github.com" url="https://github.com/VGirotto/prism-claude-code-plugin">VGirotto</vendor>
 
     <description><![CDATA[
     <p><strong>Prism</strong> is a local visual wrapper that integrates the
     <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code CLI</a>
-    directly into your JetBrains IDE. It runs the CLI in a real embedded terminal and makes
-    <strong>no external API calls</strong> — all data stays on your machine.</p>
+    and the <a href="https://developers.openai.com/codex">OpenAI Codex CLI</a>
+    directly into your JetBrains IDE. It runs each CLI in a real embedded terminal
+    and makes <strong>no external API calls</strong> — all data stays on your machine.</p>
 
-    <p>Requires the Claude Code CLI installed and authenticated independently.</p>
+    <p>Requires the Claude Code or Codex CLI installed and authenticated independently.</p>
 
     <h3>Features</h3>
     <ul>
         <li><strong>Interactive Terminal</strong> — Full ANSI color support via PTY (pty4j + JediTerm)</li>
-        <li><strong>Claude Changes Panel</strong> — Per-interaction diff view with history navigation and one-click revert</li>
+        <li><strong>Multi-Agent</strong> — Run Claude Code and Codex sessions side by side; pick at session start</li>
+        <li><strong>Agent Changes Panel</strong> — Per-interaction diff view with history navigation and one-click revert</li>
         <li><strong>Context Menu</strong> — Explain, Review, Fix, Generate Tests, Refactor from the editor</li>
-        <li><strong>Toolbar</strong> — Model (opus/sonnet/haiku), Effort, Cost, Resume, Compact</li>
+        <li><strong>Toolbar</strong> — Model (opus/sonnet/haiku), Effort, Cost, Resume, Compact (Claude); shared Templates, Cost, Settings for every agent</li>
         <li><strong>Prompt Templates</strong> — Reusable templates with {selection}, {file}, {language} variables</li>
-        <li><strong>Conversation History</strong> — Browse and resume past conversations with full-text search</li>
+        <li><strong>Conversation History</strong> — Browse and resume past conversations from the active agent with full-text search</li>
         <li><strong>Multi-Session</strong> — Multiple simultaneous sessions in independent tabs</li>
         <li><strong>Status Bar Widget</strong> — Real-time session state (working/idle/stopped)</li>
         <li><strong>i18n</strong> — English, Portuguese, Spanish</li>
@@ -39,13 +41,23 @@
 
     <h3>Disclaimer</h3>
     <p>Prism is an independent, community-built project — not affiliated with, endorsed by, or
-    sponsored by Anthropic, PBC. "Claude" and "Claude Code" are trademarks of Anthropic, PBC.</p>
+    sponsored by Anthropic, PBC or OpenAI, OpenCo. "Claude" and "Claude Code" are trademarks
+    of Anthropic, PBC. "Codex" is a trademark of OpenAI.</p>
     <p>This software is provided <strong>as-is</strong>, without warranty of any kind.
     See the <a href="https://github.com/VGirotto/prism-claude-code-plugin/blob/main/LICENSE">LICENSE</a>
     for details.</p>
     ]]></description>
 
     <change-notes><![CDATA[
+    <h2>v1.3.0 — Codex Integration</h2>
+    <ul>
+        <li>New: <strong>Multi-agent</strong> — start Claude Code or Codex sessions from the same tool window</li>
+        <li>New: <strong>CLI picker</strong> on the New Session button when more than one agent is installed</li>
+        <li>New: <strong>Default agent</strong> setting and dedicated Codex executable path</li>
+        <li>New: <strong>Codex history</strong> — Conversation History reads sessions from <code>~/.codex/sessions</code></li>
+        <li>Change: Toolbar items wrapping Claude-only slash commands (/resume, /compact, /clear, /model, /effort) are hidden for Codex sessions</li>
+        <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
+    </ul>
     <h2>v1.2.0 — Toolbar & Context Improvements</h2>
     <ul>
         <li>New: <strong>Clear</strong> button in toolbar — sends /clear with confirmation dialog</li>
@@ -100,19 +112,19 @@
         <toolWindow id="Prism"
                     anchor="bottom"
                     canCloseContents="true"
-                    factoryClass="com.github.vgirotto.prism.toolwindow.ClaudeToolWindowFactory"
+                    factoryClass="com.github.vgirotto.prism.toolwindow.AgentToolWindowFactory"
                     icon="/icons/prism.svg"/>
 
         <!-- Settings -->
         <projectConfigurable
             parentId="tools"
-            instance="com.github.vgirotto.prism.settings.ClaudeSettingsConfigurable"
+            instance="com.github.vgirotto.prism.settings.AgentSettingsConfigurable"
             id="com.github.vgirotto.prism.settings"
-            displayName="Prism — Claude Code"/>
+            displayName="Prism"/>
 
         <!-- Application-level services -->
         <applicationService
-            serviceImplementation="com.github.vgirotto.prism.services.ClaudeSettingsState"/>
+            serviceImplementation="com.github.vgirotto.prism.services.AgentSettingsState"/>
         <applicationService
             serviceImplementation="com.github.vgirotto.prism.services.PromptTemplateService"/>
 
@@ -129,7 +141,7 @@
         <!-- Status Bar Widget -->
         <statusBarWidgetFactory
             id="ClaudeCodeStatus"
-            implementation="com.github.vgirotto.prism.toolwindow.ClaudeStatusBarWidgetFactory"
+            implementation="com.github.vgirotto.prism.toolwindow.AgentStatusBarWidgetFactory"
             order="after position"/>
 
         <!-- Notification group -->
@@ -144,7 +156,7 @@
 
     <actions>
         <action id="Prism.Open"
-                class="com.github.vgirotto.prism.actions.OpenClaudeAction"
+                class="com.github.vgirotto.prism.actions.OpenAgentAction"
                 text="Toggle Prism"
                 description="Toggle Prism terminal panel"
                 icon="/icons/prism.svg">
@@ -155,8 +167,8 @@
 
 <action id="Prism.ShowDiff"
                 class="com.github.vgirotto.prism.actions.ShowDiffAction"
-                text="Show Claude Changes"
-                description="Show diff of changes made by Claude"
+                text="Show Agent Changes"
+                description="Show diff of changes made by the agent"
                 icon="AllIcons.Actions.Diff">
             <add-to-group group-id="ToolsMenu" anchor="after" relative-to-action="Prism.Open"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift D"/>
@@ -165,36 +177,36 @@
 
         <action id="Prism.SendSelection"
                 class="com.github.vgirotto.prism.actions.SendSelectionAction"
-                text="Send Selection to Claude"
-                description="Send selected text to Claude Code"
+                text="Send Selection to Agent"
+                description="Send selected text to the active agent session"
                 icon="/icons/prism.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskClaudeGroup"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskAgentGroup"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift ENTER"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl shift ENTER"/>
         </action>
 
         <action id="Prism.InsertFileRef"
                 class="com.github.vgirotto.prism.actions.InsertFileReferenceAction"
-                text="Insert File Reference in Claude"
-                description="Insert @file reference in Claude Code"
+                text="Insert File Reference in Agent"
+                description="Insert @file reference in the active agent session"
                 icon="/icons/prism.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskClaudeGroup"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="Prism.AskAgentGroup"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift K"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl shift K"/>
         </action>
 
         <action id="Prism.MentionFolder"
                 class="com.github.vgirotto.prism.actions.MentionFolderAction"
-                text="Mention in Claude"
-                description="Insert @path reference in Claude Code"
+                text="Mention in Agent"
+                description="Insert @path reference in the active agent session"
                 icon="/icons/prism.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
 
-        <!-- Ask Claude context menu group -->
-        <group id="Prism.AskClaudeGroup"
-               text="Ask Claude..."
-               description="Send code to Claude with a prompt"
+        <!-- Ask Agent context menu group -->
+        <group id="Prism.AskAgentGroup"
+               text="Ask Agent..."
+               description="Send code to the agent with a prompt"
                icon="/icons/prism.svg"
                popup="true">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
@@ -202,23 +214,23 @@
             <action id="Prism.Explain"
                     class="com.github.vgirotto.prism.actions.ExplainCodeAction"
                     text="Explain"
-                    description="Ask Claude to explain this code"/>
+                    description="Ask the agent to explain this code"/>
             <action id="Prism.Review"
                     class="com.github.vgirotto.prism.actions.ReviewCodeAction"
                     text="Review"
-                    description="Ask Claude to review this code"/>
+                    description="Ask the agent to review this code"/>
             <action id="Prism.Fix"
                     class="com.github.vgirotto.prism.actions.FixCodeAction"
                     text="Fix"
-                    description="Ask Claude to fix this code"/>
+                    description="Ask the agent to fix this code"/>
             <action id="Prism.GenerateTests"
                     class="com.github.vgirotto.prism.actions.GenerateTestsAction"
                     text="Generate Tests"
-                    description="Ask Claude to write tests for this code"/>
+                    description="Ask the agent to write tests for this code"/>
             <action id="Prism.Refactor"
                     class="com.github.vgirotto.prism.actions.RefactorCodeAction"
                     text="Refactor"
-                    description="Ask Claude to refactor this code"/>
+                    description="Ask the agent to refactor this code"/>
         </group>
     </actions>
 </idea-plugin>

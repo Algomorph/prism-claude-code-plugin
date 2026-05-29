@@ -1,10 +1,13 @@
 package com.github.vgirotto.prism.toolwindow
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.PromptTemplate
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.services.AgentProcessManager
+import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ContextProvider
 import com.github.vgirotto.prism.services.PromptTemplateService
+import com.github.vgirotto.prism.settings.AgentSettingsConfigurable
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -25,7 +28,11 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import javax.swing.*
 
-class ClaudeToolbar(private val project: Project) : JPanel(BorderLayout()) {
+internal fun activeAgentCli(project: Project): AgentCli =
+    AgentProcessManager.getInstance(project).activeSession?.cli
+        ?: AgentSettingsState.getInstance().defaultCli
+
+class AgentToolbar(private val project: Project) : JPanel(BorderLayout()) {
 
     init {
         val mainGroup = DefaultActionGroup().apply {
@@ -40,16 +47,16 @@ class ClaudeToolbar(private val project: Project) : JPanel(BorderLayout()) {
             add(TemplatesAction(project))
         }
 
-        val mainToolbar = ActionManager.getInstance().createActionToolbar("ClaudeToolbar", mainGroup, true).apply {
-            targetComponent = this@ClaudeToolbar
+        val mainToolbar = ActionManager.getInstance().createActionToolbar("AgentToolbar", mainGroup, true).apply {
+            targetComponent = this@AgentToolbar
         }
 
         val rightGroup = DefaultActionGroup().apply {
             add(SettingsAction(project))
         }
 
-        val rightToolbar = ActionManager.getInstance().createActionToolbar("ClaudeToolbarRight", rightGroup, true).apply {
-            targetComponent = this@ClaudeToolbar
+        val rightToolbar = ActionManager.getInstance().createActionToolbar("AgentToolbarRight", rightGroup, true).apply {
+            targetComponent = this@AgentToolbar
         }
 
         add(mainToolbar.component, BorderLayout.WEST)
@@ -59,7 +66,7 @@ class ClaudeToolbar(private val project: Project) : JPanel(BorderLayout()) {
 }
 
 private class TemplatesAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.templates"), ClaudeBundle.message("toolbar.templates.desc"), AllIcons.Actions.ListFiles
+    PrismBundle.message("toolbar.templates"), PrismBundle.message("toolbar.templates.desc"), AllIcons.Actions.ListFiles
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val component = e.inputEvent?.component as? JComponent ?: return
@@ -79,7 +86,7 @@ private class TemplatesAction(private val project: Project) : AnAction(
                 })
             }
             if (templates.isNotEmpty()) addSeparator()
-            add(object : AnAction(ClaudeBundle.message("toolbar.templates.create"), ClaudeBundle.message("toolbar.templates.create.desc"), AllIcons.General.Add), DumbAware {
+            add(object : AnAction(PrismBundle.message("toolbar.templates.create"), PrismBundle.message("toolbar.templates.create.desc"), AllIcons.General.Add), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
                     val dialog = TemplateDialog(project, null)
                     if (dialog.showAndGet()) {
@@ -88,7 +95,7 @@ private class TemplatesAction(private val project: Project) : AnAction(
                 }
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
-            add(object : AnAction(ClaudeBundle.message("toolbar.templates.edit"), ClaudeBundle.message("toolbar.templates.edit.desc"), AllIcons.Actions.Edit), DumbAware {
+            add(object : AnAction(PrismBundle.message("toolbar.templates.edit"), PrismBundle.message("toolbar.templates.edit.desc"), AllIcons.Actions.Edit), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = showEditDialog(templateService)
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
@@ -106,7 +113,7 @@ private class TemplatesAction(private val project: Project) : AnAction(
         val resolved = PromptTemplateService.getInstance().resolveTemplate(
             template, selection = selection, filePath = filePath,
         )
-        ClaudeProcessManager.getInstance(project).sendText("$resolved\n")
+        AgentProcessManager.getInstance(project).sendText("$resolved\n")
         ToolWindowManager.getInstance(project).getToolWindow("Prism")?.activate(null)
     }
 
@@ -114,17 +121,17 @@ private class TemplatesAction(private val project: Project) : AnAction(
         val templates = templateService.getTemplates()
         val names = templates.map { it.name }.toTypedArray()
         if (names.isEmpty()) {
-            Messages.showInfoMessage(project, ClaudeBundle.message("toolbar.templates.none"), ClaudeBundle.message("toolbar.templates.title"))
+            Messages.showInfoMessage(project, PrismBundle.message("toolbar.templates.none"), PrismBundle.message("toolbar.templates.title"))
             return
         }
         val selected = Messages.showEditableChooseDialog(
-            ClaudeBundle.message("toolbar.templates.select"), ClaudeBundle.message("toolbar.templates.edit.title"),
+            PrismBundle.message("toolbar.templates.select"), PrismBundle.message("toolbar.templates.edit.title"),
             Messages.getQuestionIcon(), names, names[0], null
         ) ?: return
         val template = templates.find { it.name == selected } ?: return
         val choice = Messages.showYesNoCancelDialog(
             project, "Template: ${template.name}\n\n${template.prompt}",
-            ClaudeBundle.message("toolbar.templates.edit.dialog"), ClaudeBundle.message("toolbar.templates.edit.button"), ClaudeBundle.message("toolbar.templates.delete.button"), ClaudeBundle.message("toolbar.cancel"), Messages.getQuestionIcon()
+            PrismBundle.message("toolbar.templates.edit.dialog"), PrismBundle.message("toolbar.templates.edit.button"), PrismBundle.message("toolbar.templates.delete.button"), PrismBundle.message("toolbar.cancel"), Messages.getQuestionIcon()
         )
         when (choice) {
             Messages.YES -> {
@@ -142,27 +149,27 @@ private class TemplatesAction(private val project: Project) : AnAction(
 }
 
 private class ModelAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.model"), ClaudeBundle.message("toolbar.model.desc"), AllIcons.Nodes.Models
+    PrismBundle.message("toolbar.model"), PrismBundle.message("toolbar.model.desc"), AllIcons.Nodes.Models
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val component = e.inputEvent?.component as? JComponent ?: return
         val group = DefaultActionGroup().apply {
             for (model in listOf(
-                "opus" to ClaudeBundle.message("toolbar.model.opus"),
-                "sonnet" to ClaudeBundle.message("toolbar.model.sonnet"),
-                "haiku" to ClaudeBundle.message("toolbar.model.haiku"),
+                "opus" to PrismBundle.message("toolbar.model.opus"),
+                "sonnet" to PrismBundle.message("toolbar.model.sonnet"),
+                "haiku" to PrismBundle.message("toolbar.model.haiku"),
             )) {
                 add(object : AnAction(model.first, model.second, null), DumbAware {
                     override fun actionPerformed(e: AnActionEvent) {
-                        ClaudeProcessManager.getInstance(project).sendText("/model ${model.first}\r")
+                        AgentProcessManager.getInstance(project).sendText("/model ${model.first}\r")
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 })
             }
             addSeparator()
-            add(object : AnAction(ClaudeBundle.message("toolbar.model.picker"), ClaudeBundle.message("toolbar.model.picker.desc"), null), DumbAware {
+            add(object : AnAction(PrismBundle.message("toolbar.model.picker"), PrismBundle.message("toolbar.model.picker.desc"), null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    ClaudeProcessManager.getInstance(project).sendText("/model\r")
+                    AgentProcessManager.getInstance(project).sendText("/model\r")
                 }
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
@@ -171,34 +178,37 @@ private class ModelAction(private val project: Project) : AnAction(
             .createActionPopupMenu("ClaudeModel", group)
         popup.component.show(component, 0, component.height)
     }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.MODEL)
+    }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
 private class EffortAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.effort"), ClaudeBundle.message("toolbar.effort.desc"), AllIcons.Actions.ProfileCPU
+    PrismBundle.message("toolbar.effort"), PrismBundle.message("toolbar.effort.desc"), AllIcons.Actions.ProfileCPU
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val component = e.inputEvent?.component as? JComponent ?: return
         val group = DefaultActionGroup().apply {
             for (level in listOf(
-                "auto" to ClaudeBundle.message("toolbar.effort.auto"),
-                "low" to ClaudeBundle.message("toolbar.effort.low"),
-                "medium" to ClaudeBundle.message("toolbar.effort.medium"),
-                "high" to ClaudeBundle.message("toolbar.effort.high"),
-                "xhigh" to ClaudeBundle.message("toolbar.effort.xhigh"),
-                "max" to ClaudeBundle.message("toolbar.effort.max"),
+                "auto" to PrismBundle.message("toolbar.effort.auto"),
+                "low" to PrismBundle.message("toolbar.effort.low"),
+                "medium" to PrismBundle.message("toolbar.effort.medium"),
+                "high" to PrismBundle.message("toolbar.effort.high"),
+                "xhigh" to PrismBundle.message("toolbar.effort.xhigh"),
+                "max" to PrismBundle.message("toolbar.effort.max"),
             )) {
                 add(object : AnAction(level.first, level.second, null), DumbAware {
                     override fun actionPerformed(e: AnActionEvent) {
-                        ClaudeProcessManager.getInstance(project).sendText("/effort ${level.first}\r")
+                        AgentProcessManager.getInstance(project).sendText("/effort ${level.first}\r")
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 })
             }
             addSeparator()
-            add(object : AnAction(ClaudeBundle.message("toolbar.effort.picker"), ClaudeBundle.message("toolbar.effort.picker.desc"), null), DumbAware {
+            add(object : AnAction(PrismBundle.message("toolbar.effort.picker"), PrismBundle.message("toolbar.effort.picker.desc"), null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    ClaudeProcessManager.getInstance(project).sendText("/effort\r")
+                    AgentProcessManager.getInstance(project).sendText("/effort\r")
                 }
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
@@ -207,72 +217,85 @@ private class EffortAction(private val project: Project) : AnAction(
             .createActionPopupMenu("ClaudeEffort", group)
         popup.component.show(component, 0, component.height)
     }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.EFFORT)
+    }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
 private class CostAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.cost"), ClaudeBundle.message("toolbar.cost.desc"), AllIcons.Actions.Profile
+    PrismBundle.message("toolbar.cost"), PrismBundle.message("toolbar.cost.desc"), AllIcons.Actions.Profile
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        ClaudeProcessManager.getInstance(project).sendText("/cost\r")
+        AgentProcessManager.getInstance(project).sendText("/cost\r")
+    }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.COST)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
 private class ResumeAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.resume"), ClaudeBundle.message("toolbar.resume.desc"), AllIcons.Actions.Resume
+    PrismBundle.message("toolbar.resume"), PrismBundle.message("toolbar.resume.desc"), AllIcons.Actions.Resume
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        ClaudeProcessManager.getInstance(project).sendText("/resume\r")
+        AgentProcessManager.getInstance(project).sendText("/resume\r")
+    }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.RESUME)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
 private class CompactAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.compact"), ClaudeBundle.message("toolbar.compact.desc"), AllIcons.Actions.Collapseall
+    PrismBundle.message("toolbar.compact"), PrismBundle.message("toolbar.compact.desc"), AllIcons.Actions.Collapseall
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val result = Messages.showOkCancelDialog(
             project,
-            ClaudeBundle.message("toolbar.compact.message"),
-            ClaudeBundle.message("toolbar.compact.title"),
-            ClaudeBundle.message("toolbar.compact.button"),
-            ClaudeBundle.message("toolbar.cancel"),
+            PrismBundle.message("toolbar.compact.message"),
+            PrismBundle.message("toolbar.compact.title"),
+            PrismBundle.message("toolbar.compact.button"),
+            PrismBundle.message("toolbar.cancel"),
             AllIcons.Actions.Collapseall
         )
         if (result == Messages.OK) {
-            ClaudeProcessManager.getInstance(project).sendText("/compact\r")
+            AgentProcessManager.getInstance(project).sendText("/compact\r")
         }
+    }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.COMPACT)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
 private class ClearAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.clear"), ClaudeBundle.message("toolbar.clear.desc"), AllIcons.Actions.GC
+    PrismBundle.message("toolbar.clear"), PrismBundle.message("toolbar.clear.desc"), AllIcons.Actions.GC
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val result = Messages.showOkCancelDialog(
             project,
-            ClaudeBundle.message("toolbar.clear.message"),
-            ClaudeBundle.message("toolbar.clear.title"),
-            ClaudeBundle.message("toolbar.clear.button"),
-            ClaudeBundle.message("toolbar.cancel"),
+            PrismBundle.message("toolbar.clear.message"),
+            PrismBundle.message("toolbar.clear.title"),
+            PrismBundle.message("toolbar.clear.button"),
+            PrismBundle.message("toolbar.cancel"),
             AllIcons.Actions.GC
         )
         if (result == Messages.OK) {
-            ClaudeProcessManager.getInstance(project).sendText("/clear\r")
+            AgentProcessManager.getInstance(project).sendText("/clear\r")
         }
+    }
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = isToolbarItemAvailable(activeAgentCli(project), ToolbarItem.CLEAR)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
 private class SettingsAction(private val project: Project) : AnAction(
-    ClaudeBundle.message("toolbar.settings"), ClaudeBundle.message("toolbar.settings.desc"), AllIcons.General.Settings
+    PrismBundle.message("toolbar.settings"), PrismBundle.message("toolbar.settings.desc"), AllIcons.General.Settings
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        ShowSettingsUtil.getInstance().showSettingsDialog(
-            project, "Prism \u2014 Claude Code"
-        )
+        ShowSettingsUtil.getInstance().showSettingsDialog(project, AgentSettingsConfigurable::class.java)
     }
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
@@ -285,21 +308,21 @@ class TemplateDialog(
     private val promptArea = JTextArea(existing?.prompt ?: "", 5, 40).apply {
         lineWrap = true; wrapStyleWord = true
     }
-    private val includeSelectionCheck = JCheckBox(ClaudeBundle.message("toolbar.templates.include.selection"), existing?.includeSelection ?: true)
-    private val includeFileRefCheck = JCheckBox(ClaudeBundle.message("toolbar.templates.include.file"), existing?.includeFileRef ?: true)
+    private val includeSelectionCheck = JCheckBox(PrismBundle.message("toolbar.templates.include.selection"), existing?.includeSelection ?: true)
+    private val includeFileRefCheck = JCheckBox(PrismBundle.message("toolbar.templates.include.file"), existing?.includeFileRef ?: true)
 
     init {
-        title = if (existing != null) ClaudeBundle.message("toolbar.templates.edit.dialog") else ClaudeBundle.message("toolbar.templates.new.dialog")
+        title = if (existing != null) PrismBundle.message("toolbar.templates.edit.dialog") else PrismBundle.message("toolbar.templates.new.dialog")
         init()
     }
 
     override fun createCenterPanel(): JComponent = FormBuilder.createFormBuilder()
-        .addLabeledComponent(ClaudeBundle.message("toolbar.templates.name"), nameField)
-        .addLabeledComponent(ClaudeBundle.message("toolbar.templates.prompt"), JScrollPane(promptArea))
+        .addLabeledComponent(PrismBundle.message("toolbar.templates.name"), nameField)
+        .addLabeledComponent(PrismBundle.message("toolbar.templates.prompt"), JScrollPane(promptArea))
         .addComponent(includeSelectionCheck)
         .addComponent(includeFileRefCheck)
         .addSeparator()
-        .addComponent(JBLabel("<html><small><b>${ClaudeBundle.message("toolbar.templates.variables")}</b></small></html>"))
+        .addComponent(JBLabel("<html><small><b>${PrismBundle.message("toolbar.templates.variables")}</b></small></html>"))
         .addComponentFillVertically(JPanel(), 0)
         .panel
 

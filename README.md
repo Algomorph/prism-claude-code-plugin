@@ -1,18 +1,18 @@
-# <img src="src/main/resources/icons/prism.svg" width="24" height="24" /> Prism — IDE Companion for Claude Code
+# <img src="src/main/resources/icons/prism.svg" width="24" height="24" /> Prism — IDE Companion for Claude Code and Codex
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![JetBrains](https://img.shields.io/badge/JetBrains-2024.3+-orange.svg)](https://plugins.jetbrains.com/)
 
 > [Leia em Português](README.pt-BR.md)
 
-A full-featured JetBrains plugin that integrates the **Claude Code CLI** directly into your IDE — with a graphical interface, per-interaction diff view, conversation history, and multi-session support.
+A full-featured JetBrains plugin that integrates both the **Claude Code CLI** and the **OpenAI Codex CLI** directly into your IDE — with a graphical interface, per-interaction diff view, conversation history, and multi-session support.
 
-Prism is a **local visual wrapper** — it spawns the Claude Code CLI via a real PTY and makes **no external API calls**. You must have the CLI installed and authenticated independently.
+Prism is a **local visual wrapper** — it spawns each agent CLI via a real PTY and makes **no external API calls**. You must have the CLI(s) installed and authenticated independently.
 
 <img src="docs/images/prism.gif" width="80%" />
 
-> **Disclaimer:** This is an unofficial community plugin, not affiliated with or endorsed by Anthropic, PBC. "Claude" and "Claude Code" are trademarks of Anthropic, PBC.
+> **Disclaimer:** This is an unofficial community plugin, not affiliated with or endorsed by Anthropic, PBC or OpenAI. "Claude" and "Claude Code" are trademarks of Anthropic, PBC. "Codex" is a trademark of OpenAI.
 
 ---
 
@@ -25,13 +25,16 @@ Prism is a **local visual wrapper** — it spawns the Claude Code CLI via a real
 | Requirement | Version | Notes |
 |-------------|---------|-------|
 | 🖥️ **JetBrains IDE** | 2024.3+ | IntelliJ IDEA, GoLand, WebStorm, PyCharm, CLion |
-| 🤖 **Claude Code CLI** | 1.0+ | `npm install -g @anthropic-ai/claude-code` |
+| 🤖 **Claude Code CLI** | 1.0+ | `npm install -g @anthropic-ai/claude-code` (optional if you only use Codex) |
+| 🧠 **Codex CLI** | 0.10+ | `npm install -g @openai/codex` (optional if you only use Claude) |
+
+At least one of the two CLIs is required. The "New Session" button shows a picker when both are installed.
 
 ### Option 1: Download from Releases (Recommended) ⭐
 
 1. 📦 Download the latest `.zip` from [**Releases**](https://github.com/VGirotto/prism-claude-code-plugin/releases)
 2. ⚙️ In the IDE: **Settings → Plugins → ⚙️ Gear icon → Install Plugin from Disk**
-3. 🔄 **Restart** the IDE — the "Claude Code" panel appears in the bottom bar
+3. 🔄 **Restart** the IDE — the "Prism" panel appears in the bottom bar
 
 That's it! 🎉
 
@@ -61,17 +64,17 @@ export JAVA_HOME="/path/to/your/IDE.app/Contents/jbr/Contents/Home"
 
 ### 🖥️ Interactive Terminal
 
-Full Claude Code terminal running inside the IDE with ANSI color support and real PTY (pty4j + JediTerm).
+Full agent terminal running inside the IDE with ANSI color support and real PTY (pty4j + JediTerm). Pick Claude Code or Codex when starting a new session.
 
-Compact toolbar with quick actions: **Model** (opus/sonnet/haiku), **Effort** (auto/low/medium/high/max), **Cost**, **Resume**, and more.
+Compact toolbar with quick actions: **Model** (opus/sonnet/haiku), **Effort** (auto/low/medium/high/max), **Cost**, **Resume**, **Compact**, and more for Claude sessions; **Templates**, **Cost**, and **Settings** are shared across all agents. Items wrapping Claude-only slash commands are hidden for Codex sessions.
 
 <img src="docs/images/commands.gif" width="80%" />
 
 ---
 
-### 📝 Claude Changes Panel
+### 📝 Agent Changes Panel
 
-Automatic diff view of all files modified per interaction — native IDE side-by-side diff with history navigation between interactions.
+Automatic diff view of all files modified per interaction — native IDE side-by-side diff with history navigation between interactions. Works for both Claude and Codex sessions.
 
 <img src="docs/images/changes.gif" width="80%" />
 
@@ -106,7 +109,10 @@ Reusable [Prompt Templates](docs/prompt-templates.md) with `{selection}`, `{file
 
 ### 🕐 Conversation History
 
-Browse past conversations with full-text search. Resume any previous session.
+Browse past conversations with full-text search. Resume any previous session. The history view scopes to the active session's CLI:
+
+- **Claude** sessions are read from `~/.claude/projects/<escaped-project-path>/*.jsonl`
+- **Codex** sessions are read from `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and filtered to the IDE project by `cwd`
 
 <img src="docs/images/history.gif" width="80%" />
 
@@ -114,7 +120,7 @@ Browse past conversations with full-text search. Resume any previous session.
 
 ### ⚙️ Settings
 
-Configure Claude path, shell, language, exclusions, auto-start, and toggles.
+Configure shell, **default agent**, **Claude path**, **Codex path**, language, exclusions, auto-start, and toggles.
 Snapshot exclusions accept comma-separated names or wildcard patterns, for example `node_modules`, `cmake-build-*`, or `**/generated`.
 
 <img src="docs/images/settings.png" width="60%" />
@@ -125,12 +131,12 @@ Snapshot exclusions accept comma-separated names or wildcard patterns, for examp
 
 | Shortcut | Action | Platform |
 |----------|--------|----------|
-| `Cmd+Shift+C` | Toggle Claude Code | macOS |
-| `Alt+Shift+C` | Toggle Claude Code | Linux/Windows |
-| `Ctrl+Shift+D` | Show Claude Changes (diff) | macOS |
-| `Ctrl+Alt+Shift+D` | Show Claude Changes (diff) | Linux/Windows |
-| `Ctrl+Shift+Enter` | Send selection to Claude | macOS |
-| `Ctrl+Alt+Shift+Enter` | Send selection to Claude | Linux/Windows |
+| `Cmd+Shift+C` | Toggle Prism | macOS |
+| `Alt+Shift+C` | Toggle Prism | Linux/Windows |
+| `Ctrl+Shift+D` | Show Agent Changes (diff) | macOS |
+| `Ctrl+Alt+Shift+D` | Show Agent Changes (diff) | Linux/Windows |
+| `Ctrl+Shift+Enter` | Send selection to agent | macOS |
+| `Ctrl+Alt+Shift+Enter` | Send selection to agent | Linux/Windows |
 | `Ctrl+Shift+K` | Insert @file reference | macOS |
 | `Ctrl+Alt+Shift+K` | Insert @file reference | Linux/Windows |
 
@@ -142,9 +148,9 @@ Snapshot exclusions accept comma-separated names or wildcard patterns, for examp
 
 ### 🔗 Quick Access
 
-- **IDE Menu**: `Tools > Toggle Claude Code`
-- **Settings**: `Settings > Tools > Prism — Claude Code`
-- **Status Bar**: Click the widget to open the Claude panel
+- **IDE Menu**: `Tools > Toggle Prism`
+- **Settings**: `Settings > Tools > Prism`
+- **Status Bar**: Click the widget to open the agent panel
 
 ---
 
