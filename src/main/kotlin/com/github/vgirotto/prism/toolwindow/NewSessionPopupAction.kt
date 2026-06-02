@@ -6,27 +6,24 @@ import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ClaudeValidationService
 import com.github.vgirotto.prism.services.CodexValidationService
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
-import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.ui.popup.PopupStep
+import com.intellij.openapi.ui.popup.util.BaseListPopupStep
 import javax.swing.JComponent
 
 /**
  * "+ New Session" entry point on the tool-window title bar.
  *
  * If both supported agent CLIs are installed, clicking opens a small
- * popup so the user can pick one. If only one is available, the action
- * skips the popup and creates a session for that CLI directly. The
- * configured [AgentSettingsState.defaultCli] is highlighted by being
- * offered first.
+ * popup so the user can pick one. If no picker is shown, the configured
+ * [AgentSettingsState.defaultCli] is used so a missing default agent
+ * surfaces its own installation/configuration error instead of silently
+ * launching a different CLI.
  */
 class NewSessionPopupAction(
-    private val project: Project,
     private val createSessionTab: (AgentCli) -> Unit,
 ) : DumbAwareAction(
     PrismBundle.message("toolwindow.new.session"),
@@ -41,26 +38,30 @@ class NewSessionPopupAction(
                 // Let createSessionTab surface the not-installed error for the default CLI.
                 createSessionTab(AgentSettingsState.getInstance().defaultCli)
             }
-            installed.size == 1 -> createSessionTab(installed.first())
-            else -> showPicker(e)
+            installed.size == 1 -> createSessionTab(AgentSettingsState.getInstance().defaultCli)
+            else -> showPicker(e, installed)
         }
     }
 
-    private fun showPicker(e: AnActionEvent) {
-        val component = e.inputEvent?.component as? JComponent ?: return
+    private fun showPicker(e: AnActionEvent, installed: List<AgentCli>) {
         val defaultCli = AgentSettingsState.getInstance().defaultCli
-        val ordered = listOf(defaultCli) + (AgentCli.values().toList() - defaultCli)
+        val ordered = listOf(defaultCli).filter { it in installed } + (installed - defaultCli)
 
-        val group = DefaultActionGroup().apply {
-            for (cli in ordered) {
-                add(object : AnAction(cli.displayName(), cli.displayDescription(), null), DumbAware {
-                    override fun actionPerformed(e: AnActionEvent) = createSessionTab(cli)
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                })
+        val popup = JBPopupFactory.getInstance().createListPopup(
+            object : BaseListPopupStep<AgentCli>("New Agent Session", ordered) {
+                override fun getTextFor(value: AgentCli): String = value.displayName()
+
+                override fun onChosen(selectedValue: AgentCli, finalChoice: Boolean): PopupStep<*>? =
+                    doFinalStep { createSessionTab(selectedValue) }
             }
+        )
+
+        val component = e.inputEvent?.component as? JComponent
+        if (component != null) {
+            popup.showUnderneathOf(component)
+        } else {
+            popup.showInBestPositionFor(e.dataContext)
         }
-        val popup = ActionManager.getInstance().createActionPopupMenu("NewAgentSession", group)
-        popup.component.show(component, 0, component.height)
     }
 
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -77,9 +78,4 @@ class NewSessionPopupAction(
 private fun AgentCli.displayName(): String = when (this) {
     AgentCli.CLAUDE -> "Claude Code"
     AgentCli.CODEX -> "Codex"
-}
-
-private fun AgentCli.displayDescription(): String = when (this) {
-    AgentCli.CLAUDE -> "Start a new Claude Code session"
-    AgentCli.CODEX -> "Start a new Codex session"
 }
