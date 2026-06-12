@@ -13,7 +13,7 @@ class ShowDiffAction : AnAction() {
         val project = e.project ?: return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            FileSnapshotService.getInstance(project).computeDiff()
+            FileSnapshotService.getInstance(project).refreshVfsAndComputeDiff()
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 ToolWindowManager.getInstance(project)

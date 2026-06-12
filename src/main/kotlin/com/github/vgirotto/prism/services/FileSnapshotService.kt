@@ -89,6 +89,32 @@ class FileSnapshotService(private val project: Project) : Disposable {
         return submitAndGet { computeDiffInternal() } ?: emptyDiff()
     }
 
+    /**
+     * Refreshes the project's VFS from disk, then computes the diff.
+     *
+     * Claude edits files through the terminal, outside the IDE, and IntelliJ doesn't detect those
+     * external changes on its own. The synchronous VFS refresh re-scans the disk, firing the file
+     * change listener so [changedPaths] is populated (newly created files are only discovered this
+     * way) and open editors reload with the new content before the diff is computed.
+     *
+     * Must be called off the EDT — the synchronous `refresh(false, true)` blocks until the VFS is
+     * up to date. Callers already run on a pooled thread, so this keeps the UI responsive while
+     * restoring both behaviors.
+     */
+    fun refreshVfsAndComputeDiff(): InteractionDiff {
+        refreshProjectVfs()
+        return computeDiff()
+    }
+
+    private fun refreshProjectVfs() {
+        val basePath = project.basePath ?: return
+        try {
+            LocalFileSystem.getInstance().findFileByPath(basePath)?.refresh(false, true)
+        } catch (e: Exception) {
+            log.debug("VFS refresh failed", e)
+        }
+    }
+
     fun recordChange(path: String) {
         val basePath = project.basePath ?: return
         if (path.startsWith(basePath)) {

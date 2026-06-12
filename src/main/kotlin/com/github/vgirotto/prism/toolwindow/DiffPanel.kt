@@ -179,7 +179,7 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
             // After an explicit clear, don't auto-recompute a diff; wait for the next real interaction.
             if (wasHistoryCleared) return@executeOnPooledThread
 
-            val diff = snapshotService.computeDiff()
+            val diff = snapshotService.refreshVfsAndComputeDiff()
             if (diff.changes.isNotEmpty() || shouldShowEmpty) showDiffOnEdt(diff)
         }
     }
@@ -190,7 +190,7 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
     fun computeAndShowDiff() {
         historyCleared = false
         ApplicationManager.getApplication().executeOnPooledThread {
-            val diff = snapshotService.computeDiff()
+            val diff = snapshotService.refreshVfsAndComputeDiff()
             if (diff.changes.isNotEmpty()) showDiffOnEdt(diff)
         }
     }

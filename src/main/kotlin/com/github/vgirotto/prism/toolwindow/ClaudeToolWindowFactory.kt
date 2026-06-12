@@ -131,7 +131,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             if (panels.isEmpty()) return@addIdleListener
 
             ApplicationManager.getApplication().executeOnPooledThread {
-                val diff = FileSnapshotService.getInstance(project).computeDiff()
+                val diff = FileSnapshotService.getInstance(project).refreshVfsAndComputeDiff()
                 if (diff.changes.isEmpty()) return@executeOnPooledThread
 
                 ApplicationManager.getApplication().invokeLater {
