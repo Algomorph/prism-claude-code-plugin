@@ -79,6 +79,22 @@ The plugin supports **IntelliJ 2024.3 (build 243) and newer** with no upper vers
 
 5. **Keep Kotlin at 1.9.x** — the plugin uses the IDE's bundled Kotlin stdlib (`kotlin.stdlib.default.dependency = false`). IntelliJ 2024.3 bundles Kotlin 1.9.x, so compiling with Kotlin 2.x could produce incompatible bytecode.
 
+## Bumping the Plugin Version
+
+When your PR introduces a change that warrants a version bump, update **all** of these files:
+
+| File | What to update |
+|------|----------------|
+| `gradle.properties` | `pluginVersion` — source of truth, used by Gradle to patch `plugin.xml` at build time |
+| `README.md` | Version badge on line 3 (`version-X.Y.Z-blue`) |
+| `README.pt-BR.md` | Version badge on line 3 (same format) |
+| `CHANGELOG.md` | Add a new `## [X.Y.Z] — YYYY-MM-DD` section at the top |
+| `plugin.xml` `<change-notes>` | Add a new `<h2>vX.Y.Z — Title</h2>` block at the top of the CDATA section |
+
+Do **not** add a `<version>` tag to `plugin.xml` — it is injected automatically by `patchPluginXml` from `gradle.properties`.
+
+If you're unsure whether your change warrants a version bump, leave it out and mention it in the PR — the maintainer will handle it.
+
 ## Code Style
 
 - Follow the conventions already present in the codebase.
