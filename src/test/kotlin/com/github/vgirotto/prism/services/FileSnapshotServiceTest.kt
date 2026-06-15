@@ -144,6 +144,32 @@ class FileSnapshotServiceTest {
     }
 
     @Test
+    fun `excludes wildcard-matched directories`() {
+        engine = TempFileSnapshotEngine(projectDir.absolutePath, listOf("cmake*", "vendor-*"))
+        createFile("src/main.kt", "code")
+        createFile("cmake-build-debug/cache.txt", "x")
+        createFile("third_party/vendor-local/index.js", "x")
+        engine.takeSnapshot()
+
+        assertTrue(engine.hasHash("src/main.kt"))
+        assertFalse(engine.hasHash("cmake-build-debug/cache.txt"))
+        assertFalse(engine.hasHash("third_party/vendor-local/index.js"))
+    }
+
+    @Test
+    fun `ignores recorded changes in wildcard-matched directories`() {
+        engine = TempFileSnapshotEngine(projectDir.absolutePath, listOf("generated-*"))
+        createFile("src/main.kt", "code")
+        engine.takeSnapshot()
+
+        createFile("src/generated-client/model.kt", "generated")
+        engine.recordChange("${projectDir.absolutePath}/src/generated-client/model.kt")
+        val diff = engine.computeDiff()
+
+        assertTrue(diff.changes.isEmpty())
+    }
+
+    @Test
     fun `skips large files over 1MB`() {
         createFile("small.txt", "small")
         createFile("large.bin", "x".repeat(1_100_000))
@@ -253,6 +279,47 @@ class FileSnapshotServiceTest {
         val diff = engine.computeDiff()
         assertEquals(1, diff.changes.size)
         assertEquals(ChangeStatus.MODIFIED, diff.changes[0].status)
+    }
+
+    @Test
+    fun `uses recorded changes instead of full scan when changes are known`() {
+        createFile("recorded.kt", "original")
+        createFile("unrecorded.kt", "original")
+        engine.takeSnapshot()
+        createFile("recorded.kt", "modified")
+        createFile("unrecorded.kt", "modified")
+        engine.recordChange("${projectDir.absolutePath}/recorded.kt")
+
+        val diff = engine.computeDiff()
+
+        assertEquals(listOf("recorded.kt"), diff.changes.map { it.path })
+    }
+
+    @Test
+    fun `recorded directory deletion checks snapshot children`() {
+        createFile("src/deleted/a.kt", "a")
+        createFile("src/deleted/b.kt", "b")
+        engine.takeSnapshot()
+        File(projectDir, "src/deleted").deleteRecursively()
+        engine.recordChange("${projectDir.absolutePath}/src/deleted")
+
+        val diff = engine.computeDiff()
+
+        assertEquals(listOf("src/deleted/a.kt", "src/deleted/b.kt"), diff.changes.map { it.path })
+        assertTrue(diff.changes.all { it.status == ChangeStatus.DELETED })
+    }
+
+    @Test
+    fun `mandatory excludes git even when custom patterns omit it`() {
+        val customEngine = TempFileSnapshotEngine(projectDir.absolutePath, exDirs = listOf("build"))
+        createFile(".git/config", "repo metadata")
+        createFile("src/file.kt", "content")
+
+        customEngine.takeSnapshot()
+
+        assertFalse(customEngine.hasHash(".git/config"))
+        assertTrue(customEngine.hasHash("src/file.kt"))
+        customEngine.dispose()
     }
 
     // --- History ---
@@ -406,14 +473,17 @@ class FileSnapshotServiceTest {
     /**
      * Standalone engine mirroring FileSnapshotService with temp files.
      */
-    class TempFileSnapshotEngine(private val basePath: String) {
+    class TempFileSnapshotEngine(
+        private val basePath: String,
+        private val exDirs: List<String> = listOf("node_modules",".git","build","out",".gradle",".idea","target","dist",".next","__pycache__",".venv","vendor",".intellijPlatform",".DS_Store",".cls",".cache"),
+    ) {
         private var hashes = mapOf<String, String>()
         private var tempDir: File? = null
         private val changed = mutableSetOf<String>()
         private val history = mutableListOf<InteractionDiff>()
 
-        private val exDirs = setOf("node_modules",".git","build","out",".gradle",".idea","target","dist",".next","__pycache__",".venv","vendor",".intellijPlatform",".DS_Store",".cls",".cache")
         private val exPats = listOf(Regex(".*\\.iml$"),Regex(".*\\.class$"),Regex(".*\\.jar$"),Regex(".*\\.pyc$"),Regex("\\.DS_Store"))
+        private val mandatoryExDirs = listOf(".git")
 
         fun takeSnapshot() {
             if (tempDir == null || !tempDir!!.exists()) {
@@ -446,9 +516,9 @@ class FileSnapshotServiceTest {
 
         private fun copyFiles(dir: File, base: String, td: File, h: MutableMap<String, String>) {
             for (f in (dir.listFiles() ?: return)) {
-                if (f.isDirectory) { if (!exDirs.contains(f.name)) copyFiles(f, base, td, h); continue }
-                if (!f.isFile || f.length() > 1_000_000) continue
                 val r = f.path.removePrefix(base).removePrefix("/")
+                if (f.isDirectory) { if (!excluded(r)) copyFiles(f, base, td, h); continue }
+                if (!f.isFile || f.length() > 1_000_000) continue
                 if (excluded(r)) continue
                 val c = f.readBytes()
                 h[r] = sha256(c)
@@ -467,7 +537,7 @@ class FileSnapshotServiceTest {
             val td = tempDir ?: return empty()
             if (hashes.isEmpty()) return empty()
             val changes = mutableListOf<FileDiffEntry>()
-            val paths = if (changed.isNotEmpty()) changed.toSet() + hashes.keys else hashes.keys.toSet()
+            val paths = pathsToCheck()
             val checked = mutableSetOf<String>()
             for (r in paths) {
                 if (!checked.add(r) || excluded(r)) continue
@@ -516,7 +586,24 @@ class FileSnapshotServiceTest {
             tempDir = null
         }
 
-        private fun excluded(r: String) = exDirs.any { r.startsWith("$it/") || r == it } || exPats.any { it.matches(r) }
+        private fun pathsToCheck(): Set<String> {
+            if (changed.isEmpty()) return hashes.keys.toSet()
+
+            val paths = changed.toMutableSet()
+            for (r in changed) {
+                val pf = File(basePath, r)
+                if (pf.exists() && !pf.isDirectory) continue
+
+                val prefix = r.trimEnd('/') + "/"
+                hashes.keys.filter { it.startsWith(prefix) }.forEach { paths.add(it) }
+            }
+            return paths
+        }
+
+        private fun excluded(r: String) =
+            ExclusionPatternMatcher.matches(r, mandatoryExDirs) ||
+                ExclusionPatternMatcher.matches(r, exDirs) ||
+                exPats.any { it.matches(r) }
         private fun empty() = InteractionDiff(0, System.currentTimeMillis(), emptyList())
         private fun sha256(d: ByteArray) = MessageDigest.getInstance("SHA-256").digest(d).joinToString("") { "%02x".format(it) }
     }

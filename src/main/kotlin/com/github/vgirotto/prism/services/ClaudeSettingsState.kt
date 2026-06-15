@@ -64,8 +64,8 @@ class ClaudeSettingsState : PersistentStateComponent<ClaudeSettingsState.State> 
         get() = state.language
         set(value) { state.language = value }
 
-    fun getExcludedDirSet(): Set<String> =
-        excludedPatterns.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    fun getExcludedPatterns(): List<String> =
+        excludedPatterns.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
     companion object {
         fun getInstance(): ClaudeSettingsState =

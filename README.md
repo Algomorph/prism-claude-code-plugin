@@ -115,6 +115,7 @@ Browse past conversations with full-text search. Resume any previous session.
 ### ⚙️ Settings
 
 Configure Claude path, shell, language, exclusions, auto-start, and toggles.
+Snapshot exclusions accept comma-separated names or wildcard patterns, for example `node_modules`, `cmake-build-*`, or `**/generated`.
 
 <img src="docs/images/settings.png" width="60%" />
 

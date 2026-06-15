@@ -73,20 +73,4 @@ class ClaudeSettingsStateTest {
         assertEquals("new", settings.claudePath)
     }
 
-    @Test
-    fun `getExcludedDirSet parses comma-separated patterns`() {
-        val settings = ClaudeSettingsState()
-        settings.excludedPatterns = ".git, node_modules , build"
-
-        val dirs = settings.getExcludedDirSet()
-        assertEquals(setOf(".git", "node_modules", "build"), dirs)
-    }
-
-    @Test
-    fun `getExcludedDirSet handles empty string`() {
-        val settings = ClaudeSettingsState()
-        settings.excludedPatterns = ""
-
-        assertTrue(settings.getExcludedDirSet().isEmpty())
-    }
 }

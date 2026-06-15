@@ -1,6 +1,7 @@
 package com.github.vgirotto.prism.actions
 
 import com.github.vgirotto.prism.services.FileSnapshotService
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -11,13 +12,15 @@ class ShowDiffAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
 
-        // Compute the diff
-        FileSnapshotService.getInstance(project).computeDiff()
-
-        // Show and activate the Claude Code tool window (Changes panel is always visible)
-        ToolWindowManager.getInstance(project)
-            .getToolWindow("Prism")
-            ?.activate(null)
+        ApplicationManager.getApplication().executeOnPooledThread {
+            FileSnapshotService.getInstance(project).refreshVfsAndComputeDiff()
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                ToolWindowManager.getInstance(project)
+                    .getToolWindow("Prism")
+                    ?.activate(null)
+            }
+        }
     }
 
     override fun getActionUpdateThread() = ActionUpdateThread.BGT

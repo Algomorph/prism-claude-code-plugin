@@ -124,6 +124,8 @@ The snapshot mechanism is designed to minimize memory usage while keeping diff c
 
 **On first interaction**, `FileSnapshotService` copies the entire project tree to a temporary directory (`/tmp/claude-snap/`). A SHA-256 hash is computed for each file and stored in a lightweight in-memory index (approximately 100 bytes per file).
 
+Snapshot exclusions are applied before files are copied. The exclusion list accepts comma-separated names and wildcard patterns such as `cmake-build-*` or `**/generated`.
+
 **On subsequent interactions**, only files whose paths were touched since the last snapshot (tracked via `BulkFileListener`) are re-copied and re-hashed. This incremental strategy avoids redundant I/O on large projects.
 
 **At diff time**, `computeDiff()` compares the current file content against the snapshot copy using the hash index as a fast pre-filter. Only files with a differing hash are read in full and presented in the Claude Changes Panel. The native IDE `DiffManager` renders a side-by-side view labeled "Before Claude" and "After".

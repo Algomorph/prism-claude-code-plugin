@@ -63,8 +63,35 @@ class FileSnapshotService(private val project: Project) : Disposable {
         Regex("\\.DS_Store"),
     )
 
-    private fun getExcludeDirs(): Set<String> =
-        ClaudeSettingsState.getInstance().getExcludedDirSet()
+    private val mandatoryExcludePatterns = listOf(
+        ".git",
+    )
+
+    /** Compiled once — the mandatory patterns never change. */
+    private val mandatoryMatcher = ExclusionPatternMatcher.compile(mandatoryExcludePatterns)
+
+    /**
+     * Cached matcher for the user-configured exclusion patterns. Recompiled only when the pattern
+     * list changes, so a full snapshot scan reuses one set of regexes instead of recompiling per
+     * file. Guarded by [patternCacheLock] because isExcluded() runs both on the snapshot executor
+     * and on the VFS listener thread (via recordChange()).
+     */
+    private val patternCacheLock = Any()
+    private var cachedRawPatterns: List<String>? = null
+    private var cachedUserMatcher: ExclusionPatternMatcher.Compiled =
+        ExclusionPatternMatcher.compile(emptyList())
+
+    private fun getExcludePatterns(): List<String> =
+        ClaudeSettingsState.getInstance().getExcludedPatterns()
+
+    private fun userMatcher(): ExclusionPatternMatcher.Compiled = synchronized(patternCacheLock) {
+        val patterns = getExcludePatterns()
+        if (patterns != cachedRawPatterns) {
+            cachedUserMatcher = ExclusionPatternMatcher.compile(patterns)
+            cachedRawPatterns = patterns
+        }
+        cachedUserMatcher
+    }
 
     private fun getMaxFileSize(): Long =
         ClaudeSettingsState.getInstance().maxFileSizeKb.toLong() * 1024
@@ -83,6 +110,32 @@ class FileSnapshotService(private val project: Project) : Disposable {
      */
     fun computeDiff(): InteractionDiff {
         return submitAndGet { computeDiffInternal() } ?: emptyDiff()
+    }
+
+    /**
+     * Refreshes the project's VFS from disk, then computes the diff.
+     *
+     * Claude edits files through the terminal, outside the IDE, and IntelliJ doesn't detect those
+     * external changes on its own. The synchronous VFS refresh re-scans the disk, firing the file
+     * change listener so [changedPaths] is populated (newly created files are only discovered this
+     * way) and open editors reload with the new content before the diff is computed.
+     *
+     * Must be called off the EDT — the synchronous `refresh(false, true)` blocks until the VFS is
+     * up to date. Callers already run on a pooled thread, so this keeps the UI responsive while
+     * restoring both behaviors.
+     */
+    fun refreshVfsAndComputeDiff(): InteractionDiff {
+        refreshProjectVfs()
+        return computeDiff()
+    }
+
+    private fun refreshProjectVfs() {
+        val basePath = project.basePath ?: return
+        try {
+            LocalFileSystem.getInstance().findFileByPath(basePath)?.refresh(false, true)
+        } catch (e: Exception) {
+            log.debug("VFS refresh failed", e)
+        }
     }
 
     fun recordChange(path: String) {
@@ -241,11 +294,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
 
         val currentChangedPaths = synchronized(changedPaths) { changedPaths.toSet() }
 
-        val pathsToCheck = if (currentChangedPaths.isNotEmpty()) {
-            currentChangedPaths + snapshotHashes.keys
-        } else {
-            snapshotHashes.keys.toSet()
-        }
+        val pathsToCheck = pathsToCheck(currentChangedPaths)
 
         val checked = mutableSetOf<String>()
         for (relativePath in pathsToCheck) {
@@ -325,13 +374,13 @@ class FileSnapshotService(private val project: Project) : Disposable {
     ) {
         val children = dir.listFiles() ?: return
         for (file in children) {
+            val relativePath = file.path.removePrefix(basePath).removePrefix("/")
             if (file.isDirectory) {
-                if (getExcludeDirs().contains(file.name)) continue
+                if (isExcluded(relativePath)) continue
                 fullCopy(file, basePath, tempDir, hashes)
                 continue
             }
             if (!file.isFile || file.length() > getMaxFileSize()) continue
-            val relativePath = file.path.removePrefix(basePath).removePrefix("/")
             if (isExcluded(relativePath)) continue
 
             try {
@@ -437,9 +486,29 @@ class FileSnapshotService(private val project: Project) : Disposable {
     }
 
     private fun isExcluded(path: String): Boolean {
-        val dirs = getExcludeDirs()
-        return dirs.any { path.startsWith("$it/") || path == it } ||
+        return mandatoryMatcher.matches(path) ||
+            userMatcher().matches(path) ||
             excludeFilePatterns.any { it.matches(path) }
+    }
+
+    private fun pathsToCheck(currentChangedPaths: Set<String>): Set<String> {
+        if (currentChangedPaths.isEmpty()) {
+            return snapshotHashes.keys.toSet()
+        }
+
+        val paths = currentChangedPaths.toMutableSet()
+        val basePath = project.basePath ?: return paths
+        for (relativePath in currentChangedPaths) {
+            val projectFile = File(basePath, relativePath)
+            if (projectFile.exists() && !projectFile.isDirectory) continue
+
+            val prefix = relativePath.trimEnd('/') + "/"
+            snapshotHashes.keys
+                .asSequence()
+                .filter { it.startsWith(prefix) }
+                .forEach { paths.add(it) }
+        }
+        return paths
     }
 
     private fun emptyDiff() = InteractionDiff(0, System.currentTimeMillis(), emptyList())

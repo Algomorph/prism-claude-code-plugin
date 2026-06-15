@@ -115,6 +115,7 @@ Navegue por conversas anteriores com busca full-text. Retome qualquer sessão an
 ### ⚙️ Configurações
 
 Configure o caminho do Claude, shell, idioma, exclusões, auto-start e toggles.
+Exclusões de snapshot aceitam nomes ou padrões curinga separados por vírgula, por exemplo `node_modules`, `cmake-build-*` ou `**/generated`.
 
 <img src="docs/images/settings.png" width="60%" />
 
