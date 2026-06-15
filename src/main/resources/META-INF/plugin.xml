@@ -46,6 +46,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+    <h2>v1.2.1 — Snapshot Reliability</h2>
+    <ul>
+        <li>New: wildcard snapshot exclusions — patterns like <code>cmake-build-*</code> and <code>**/generated</code></li>
+        <li>Fix: diff computation moved off the EDT — eliminates IDE freezes on large projects</li>
+    </ul>
     <h2>v1.2.0 — Toolbar & Context Improvements</h2>
     <ul>
         <li>New: <strong>Clear</strong> button in toolbar — sends /clear with confirmation dialog</li>

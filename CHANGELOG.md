@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.1] — Not yet released
+## [1.2.1] — 2026-06-15
 
 ### Added
 
@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Exclusion matching**: exact patterns (`build`, `target`, etc.) now match any path segment, so they also exclude nested directories like `src/build/`
+
+### Fixed
+
+- **EDT freeze**: diff computation is now dispatched to a background thread, eliminating IDE freezes on projects with many tracked files (fixes #9)
 
 ## [1.2.0] — 2026-04-17
 
