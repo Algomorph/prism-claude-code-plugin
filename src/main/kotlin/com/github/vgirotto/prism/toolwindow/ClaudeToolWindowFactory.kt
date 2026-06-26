@@ -18,6 +18,7 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -28,6 +29,8 @@ import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
 import java.awt.BorderLayout
+import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JLabel
@@ -207,11 +210,10 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                 disposable
             )
 
-            // Register Claude Code CLI shortcut passthroughs
-            // IntelliJ intercepts Ctrl+S/V/Z/O/T/G before they reach the PTY,
-            // so we explicitly forward them as control characters.
+            // Ctrl+V is handled specially per platform (see below). The rest are
+            // CLI shortcuts IntelliJ intercepts before they reach the PTY, so we
+            // explicitly forward them as control characters.
             val cliShortcuts = mapOf(
-                KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK) to "\u0016",     // Ctrl+V (paste images)
                 KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK) to "\u0013",     // Ctrl+S (stash prompt)
                 KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK) to "\u001A",     // Ctrl+Z (suspend)
                 KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK) to "\u000F",     // Ctrl+O (verbose output)
@@ -234,6 +236,30 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                     disposable
                 )
             }
+
+            // Ctrl+V: on Linux IntelliJ swallows the keystroke before it reaches
+            // the PTY and the X11 clipboard isn't reliably readable by the child
+            // process, so we paste from the JVM clipboard ourselves. On macOS and
+            // Windows the native passthrough works well (Cmd+V pastes text, Ctrl+V
+            // pastes images via the Claude CLI), so we leave it untouched.
+            val pasteAction = if (SystemInfo.isLinux) {
+                object : DumbAwareAction() {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        handleSmartPaste(project)
+                    }
+                }
+            } else {
+                object : DumbAwareAction() {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        ClaudeProcessManager.getInstance(project).sendText("\u0016")
+                    }
+                }
+            }
+            pasteAction.registerCustomShortcutSet(
+                CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK)),
+                terminalWidget.component,
+                disposable
+            )
 
             val toolbar = ClaudeToolbar(project)
             val terminalWithToolbar = JPanel(BorderLayout()).apply {
@@ -376,5 +402,45 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                 .createNotification("Prism", message, NotificationType.ERROR)
                 .notify(project)
         }
+    }
+
+    /**
+     * Linux Ctrl+V handler. If the clipboard holds an image, forward ^V so the
+     * Claude CLI pastes it; otherwise paste clipboard text ourselves wrapped in
+     * bracketed-paste escapes so multi-line content doesn't auto-submit.
+     */
+    private fun handleSmartPaste(project: Project) {
+        val clipboard = try {
+            Toolkit.getDefaultToolkit().systemClipboard
+        } catch (e: Exception) {
+            log.warn("SmartPaste: system clipboard unavailable", e)
+            return
+        }
+
+        val imageFlavorAvailable = try {
+            clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)
+        } catch (e: Exception) { false }
+        if (imageFlavorAvailable) {
+            ClaudeProcessManager.getInstance(project).sendText("\u0016")
+            return
+        }
+
+        val text = try {
+            if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
+                clipboard.getData(DataFlavor.stringFlavor) as? String
+            } else null
+        } catch (e: Exception) {
+            log.debug("SmartPaste: failed to read clipboard text", e)
+            null
+        }
+        if (text.isNullOrEmpty()) return
+        sendBracketedPaste(project, text)
+    }
+
+    private fun sendBracketedPaste(project: Project, payload: String) {
+        // Bracketed paste mode: tells the CLI this is pasted content so newlines
+        // are treated as input rather than submit, and key sequences inside the
+        // text aren't interpreted as shortcuts.
+        ClaudeProcessManager.getInstance(project).sendText("\u001b[200~$payload\u001b[201~")
     }
 }
