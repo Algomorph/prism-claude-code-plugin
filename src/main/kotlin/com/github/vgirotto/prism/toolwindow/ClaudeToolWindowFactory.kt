@@ -29,10 +29,17 @@ import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
 import java.awt.BorderLayout
+import java.awt.Image
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
+import java.awt.image.BufferedImage
+import java.awt.image.RenderedImage
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import javax.imageio.ImageIO
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.KeyStroke
@@ -405,9 +412,9 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
     }
 
     /**
-     * Linux Ctrl+V handler. If the clipboard holds an image, forward ^V so the
-     * Claude CLI pastes it; otherwise paste clipboard text ourselves wrapped in
-     * bracketed-paste escapes so multi-line content doesn't auto-submit.
+     * Linux Ctrl+V handler. If the clipboard holds an image, write it to a temp
+     * PNG and paste the file path; otherwise paste clipboard text ourselves
+     * wrapped in bracketed-paste escapes so multi-line content doesn't auto-submit.
      */
     private fun handleSmartPaste(project: Project) {
         val clipboard = try {
@@ -420,7 +427,17 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         val imageFlavorAvailable = try {
             clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)
         } catch (e: Exception) { false }
+
+        // Image branch: save clipboard bytes to a temp PNG and paste the path.
+        // Pasting a path (rather than forwarding ^V) avoids depending on Claude's
+        // own clipboard reader, which can't always pick up screenshots on Linux/X11.
         if (imageFlavorAvailable) {
+            val path = saveClipboardImageToTempFile(clipboard)
+            if (path != null) {
+                sendBracketedPaste(project, "$path ")
+                return
+            }
+            log.warn("SmartPaste: image flavor advertised but bytes could not be read; falling back to ^V")
             ClaudeProcessManager.getInstance(project).sendText("\u0016")
             return
         }
@@ -442,5 +459,56 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         // are treated as input rather than submit, and key sequences inside the
         // text aren't interpreted as shortcuts.
         ClaudeProcessManager.getInstance(project).sendText("\u001b[200~$payload\u001b[201~")
+    }
+
+    private fun saveClipboardImageToTempFile(clipboard: java.awt.datatransfer.Clipboard): String? {
+        val raw = try {
+            clipboard.getData(DataFlavor.imageFlavor)
+        } catch (e: Exception) {
+            log.warn("SmartPaste: clipboard.getData(imageFlavor) failed", e)
+            return null
+        }
+        val rendered: RenderedImage = when (raw) {
+            is RenderedImage -> raw
+            is Image -> toBuffered(raw) ?: return null
+            else -> {
+                log.warn("SmartPaste: unexpected image type ${raw?.javaClass?.name}")
+                return null
+            }
+        }
+        return try {
+            val dir = Path.of(System.getProperty("java.io.tmpdir"), "prism-paste")
+            Files.createDirectories(dir)
+            pruneOldFiles(dir)
+            val file = Files.createTempFile(dir, "paste-", ".png")
+            ImageIO.write(rendered, "png", file.toFile())
+            file.toAbsolutePath().toString()
+        } catch (e: Exception) {
+            log.warn("SmartPaste: failed to write temp PNG", e)
+            null
+        }
+    }
+
+    private fun toBuffered(img: Image): BufferedImage? {
+        val w = img.getWidth(null)
+        val h = img.getHeight(null)
+        if (w <= 0 || h <= 0) return null
+        val buf = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        val g = buf.createGraphics()
+        try { g.drawImage(img, 0, 0, null) } finally { g.dispose() }
+        return buf
+    }
+
+    private fun pruneOldFiles(dir: Path) {
+        val cutoff = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1)
+        try {
+            Files.newDirectoryStream(dir, "paste-*.png").use { stream ->
+                for (p in stream) {
+                    try {
+                        if (Files.getLastModifiedTime(p).toMillis() < cutoff) Files.deleteIfExists(p)
+                    } catch (_: Exception) { /* ignore */ }
+                }
+            }
+        } catch (_: Exception) { /* ignore */ }
     }
 }

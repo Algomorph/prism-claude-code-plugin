@@ -138,7 +138,7 @@ Snapshot exclusions accept comma-separated names or wildcard patterns, for examp
 
 #### Paste in the Claude terminal (Linux)
 
-On Linux, `Ctrl+V` inspects the system clipboard: if it holds an image, the Claude CLI's image-paste runs; otherwise the clipboard text is pasted into the prompt (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` to force a plain-text paste. On macOS and Windows, `Ctrl+V` keeps its native Claude CLI behavior.
+On Linux, `Ctrl+V` inspects the system clipboard: if it holds an image, the image bytes are written to a temporary PNG and the file path is pasted into the prompt (Claude attaches the file). Otherwise the clipboard text is pasted (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` to force a plain-text paste. On macOS and Windows, `Ctrl+V` keeps its native Claude CLI behavior.
 
 ### 🔗 Quick Access
 

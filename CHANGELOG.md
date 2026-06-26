@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Ctrl+V on Linux**: now pastes whatever is on the clipboard. If the clipboard holds an image, the Claude CLI's image-paste runs (previous behavior); otherwise the clipboard text is pasted into the prompt using bracketed-paste escapes so multi-line content doesn't auto-submit. Force plain-text paste with `Ctrl+Shift+V`. macOS and Windows keep the native `Ctrl+V` paste.
+- **Ctrl+V on Linux**: now pastes whatever is on the clipboard. If the clipboard holds an image, the image bytes are written to a temporary PNG and the file path is pasted into the prompt (Claude attaches the file); otherwise the clipboard text is pasted using bracketed-paste escapes so multi-line content doesn't auto-submit. Force plain-text paste with `Ctrl+Shift+V`. macOS and Windows keep the native `Ctrl+V` paste.
 
 ## [1.2.1] — 2026-06-15
 
