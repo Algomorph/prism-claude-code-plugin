@@ -136,6 +136,10 @@ Exclusões de snapshot aceitam nomes ou padrões curinga separados por vírgula,
 
 > No macOS, `Ctrl` = tecla Control física (não Cmd).
 
+#### Colar no terminal Claude (Linux)
+
+No Linux, `Ctrl+V` inspeciona a área de transferência: se contiver uma imagem, o CLI executa a colagem de imagem; caso contrário, o texto da área de transferência é colado no prompt (envolto em escapes de bracketed paste, então conteúdo de múltiplas linhas não é submetido automaticamente). Use `Ctrl+Shift+V` para forçar uma colagem de texto puro. No macOS e Windows, `Ctrl+V` mantém o comportamento nativo do Claude CLI.
+
 ### 🔗 Acessos Rápidos
 
 - **Menu IDE**: `Tools > Toggle Claude Code`

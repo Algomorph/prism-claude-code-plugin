@@ -136,6 +136,10 @@ Snapshot exclusions accept comma-separated names or wildcard patterns, for examp
 
 > On macOS, `Ctrl` refers to the physical Control key (not Cmd).
 
+#### Paste in the Claude terminal (Linux)
+
+On Linux, `Ctrl+V` inspects the system clipboard: if it holds an image, the Claude CLI's image-paste runs; otherwise the clipboard text is pasted into the prompt (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` to force a plain-text paste. On macOS and Windows, `Ctrl+V` keeps its native Claude CLI behavior.
+
 ### 🔗 Quick Access
 
 - **IDE Menu**: `Tools > Toggle Claude Code`
