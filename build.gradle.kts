@@ -58,7 +58,16 @@ intellijPlatform {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        // Browser-level (JCEF) tests are tagged "browser". They need a display, so they
+        // are excluded from the default headless `./gradlew test` (local dev + the plain
+        // CI job) and opted in with `-PbrowserTests` under Xvfb (see ui-test.yml).
+        // Chat-shell browser tests additionally self-skip when JBCefApp.isSupported() is
+        // false, so enabling the tag on a headless box is harmless.
+        if (!project.hasProperty("browserTests")) {
+            excludeTags("browser")
+        }
+    }
 }
 
 tasks {
