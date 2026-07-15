@@ -1,0 +1,58 @@
+name: UI Test (JCEF browser)
+
+# Runs the browser-level (JCEF) tests for the hybrid chat shell. These render
+# real DOM in an embedded Chromium via JBCefBrowser and assert on the rendered
+# result (KaTeX widgets, image resolution, sanitization) and on the CEF request
+# interceptor ("no remote request occurred"). They need a display, so this job
+# provides one with Xvfb and opts the tag in via `-PbrowserTests`. Tests still
+# self-skip (JUnit assumeTrue) if JBCefApp.isSupported() is false on the runner.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  ui-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Install Xvfb and JCEF runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libxrender1 libxtst6 libxi6 libgtk-3-0 libnss3 libasound2t64 \
+            libgbm1 libdrm2
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Run browser-level tests under Xvfb
+        run: |
+          xvfb-run -a --server-args="-screen 0 1920x1080x24" \
+            ./gradlew test -PbrowserTests --tests "*chatshell*" --info
+        env:
+          # JCEF requires a non-headless AWT.
+          _JAVA_OPTIONS: "-Djava.awt.headless=false"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ui-test-results
+          path: build/reports/tests/
+          retention-days: 30
