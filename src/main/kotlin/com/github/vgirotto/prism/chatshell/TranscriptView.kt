@@ -303,7 +303,7 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
                 userGesture: Boolean, isRedirect: Boolean
             ): Boolean {
                 val url = request?.url ?: return false
-                return !(url == ShellHtmlBuilder.shellUrl || url.startsWith("data:") || url == "about:blank")
+                return !isSameOriginRequest(url)
             }
 
             override fun getResourceRequestHandler(
@@ -314,7 +314,7 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
                 return object : CefResourceRequestHandlerAdapter() {
                     override fun onBeforeResourceLoad(rb: CefBrowser?, rf: CefFrame?, rr: CefRequest?): Boolean {
                         val url = rr?.url ?: return false
-                        if (url.startsWith("data:") || url == ShellHtmlBuilder.shellUrl || url == "about:blank") return false
+                        if (isSameOriginRequest(url)) return false
                         externalRequestCount.incrementAndGet()
                         log.warn("Blocked external resource request from transcript view: $url")
                         return true
@@ -336,5 +336,24 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
 
         private val SAFE_SCHEME = Regex("^(https?)://", RegexOption.IGNORE_CASE)
         fun isSafeExternalLink(href: String): Boolean = SAFE_SCHEME.containsMatchIn(href)
+
+        /**
+         * True for requests that belong to the shell itself and must be allowed to load; every
+         * other request is a genuinely external (remote-host) fetch that we block and count
+         * (§6.8, `externalRequestCount == 0`).
+         *
+         * `JBCefBrowser.loadHTML(html, url)` does NOT navigate to [ShellHtmlBuilder.shellUrl];
+         * it serves the in-memory document under an internal pseudo-URL of the form
+         * `file:///jbcefbrowser/<id>#url=<shellUrl>`. That is not a filesystem or network read —
+         * the JBCef scheme handler only ever returns the registered HTML string — so allowing
+         * the `file:///jbcefbrowser/` prefix lets the shell's own document (and its resource
+         * requests, which arrive with the fragment stripped) load while remote hosts stay
+         * blocked. Missing this prefix was what cancelled the shell load and left the pane blank.
+         */
+        fun isSameOriginRequest(url: String): Boolean =
+            url == ShellHtmlBuilder.shellUrl ||
+                url.startsWith("data:") ||
+                url == "about:blank" ||
+                url.startsWith("file:///jbcefbrowser/")
     }
 }

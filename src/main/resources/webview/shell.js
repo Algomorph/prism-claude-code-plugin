@@ -375,13 +375,22 @@
         } catch (e) {
             status = "error:" + (e && e.message ? e.message : "unknown");
         }
+        var acked = false;
         var ack = function () {
+            if (acked) return;
+            acked = true;
             if (window.__prismAck) {
                 try { window.__prismAck(JSON.stringify({ epoch: epoch, revision: revision, status: status })); } catch (x) {}
             }
         };
+        // Prefer acking after layout (double-rAF), but an off-screen-rendered / headless
+        // CEF surface may never fire requestAnimationFrame — its rAF is bound to the paint
+        // loop, which is throttled to ~never when nothing is presenting. Without a fallback
+        // the host never gets an ack, inFlight stays stuck, and every delta times out into a
+        // recovery loop (blank pane). A timer always fires; the `acked` latch keeps it to a
+        // single ack whichever path wins. The DOM was already mutated synchronously above.
         if (window.requestAnimationFrame) window.requestAnimationFrame(function () { window.requestAnimationFrame(ack); });
-        else ack();
+        window.setTimeout(ack, 32);
         return status;
     };
 
