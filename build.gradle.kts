@@ -27,6 +27,12 @@ dependencies {
 
         bundledPlugin("org.jetbrains.plugins.terminal")
 
+        // Platform's own JUnit5 test framework — needed for JCEF browser-level tests
+        // (@TestApplication provides an Application). Part of the IntelliJ platform, not
+        // a new external dependency.
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.JUnit5)
+
         pluginVerifier()
         zipSigner()
     }
