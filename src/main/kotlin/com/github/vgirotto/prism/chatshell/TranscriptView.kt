@@ -169,11 +169,26 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         }
     }
 
+    private fun disclosureLabels(): Map<String, String> = mapOf(
+        "thinking" to com.github.vgirotto.prism.i18n.ClaudeBundle.message("chatshell.disclosure.thinking"),
+        "output" to com.github.vgirotto.prism.i18n.ClaudeBundle.message("chatshell.disclosure.output"),
+        "details" to com.github.vgirotto.prism.i18n.ClaudeBundle.message("chatshell.disclosure.details"),
+    )
+
     fun setFallbackText(text: String) {
         if (browser == null) fallbackArea.text = text
     }
 
     fun setState(newState: State) { state = newState }
+
+    /** Patch the shell's CSS variables in place — no reload (design §10). */
+    fun setTheme(vars: Map<String, String>) {
+        val b = browser ?: return
+        val b64 = TranscriptCodec.encodeStringMap(vars)
+        ApplicationManager.getApplication().invokeLater {
+            if (!disposed) b.cefBrowser.executeJavaScript("window.__prismSetTheme(\"$b64\");", ShellHtmlBuilder.shellUrl, 0)
+        }
+    }
 
     private fun installHandlers(b: JBCefBrowser) {
         val ack = JBCefJSQuery.create(b as JBCefBrowserBase)
@@ -192,10 +207,15 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         client.addLoadHandler(object : CefLoadHandlerAdapter() {
             override fun onLoadEnd(cefBrowser: CefBrowser, frame: CefFrame?, httpStatusCode: Int) {
                 if (frame != null && !frame.isMain) return
+                val labelsB64 = TranscriptCodec.encodeStringMap(disclosureLabels())
                 val bootstrap = buildString {
                     append("window.__prismAck=function(p){").append(ack.inject("p")).append("};")
                     append("window.__prismLink=function(h){").append(link.inject("h")).append("};")
                     append("window.__prismCopy=function(t){").append(copy.inject("t")).append("};")
+                    // i18n disclosure labels (base64 JSON), decoded by the shell.
+                    append("(function(){var b=\"").append(labelsB64).append("\";")
+                    append("var s=atob(b);var by=new Uint8Array(s.length);for(var i=0;i<s.length;i++)by[i]=s.charCodeAt(i);")
+                    append("window.__prismLabels=JSON.parse(new TextDecoder('utf-8').decode(by));})();")
                 }
                 cefBrowser.executeJavaScript(bootstrap, ShellHtmlBuilder.shellUrl, 0)
                 ApplicationManager.getApplication().invokeLater {

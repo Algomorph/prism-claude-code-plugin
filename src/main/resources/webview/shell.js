@@ -253,6 +253,24 @@
         return el;
     }
 
+    function labelFor(kind) {
+        var L = window.__prismLabels || {};
+        if (kind === "thinking") return L.thinking || "Thinking";
+        if (kind === "toolResult") return L.output || "Output";
+        return L.details || "Details";
+    }
+
+    // Wrap a collapsed-class block in a native <details> disclosure (keyboard-accessible).
+    function wrapCollapsed(inner, kind) {
+        var d = document.createElement("details");
+        d.className = "prism-collapsed";
+        var s = document.createElement("summary");
+        s.textContent = labelFor(kind);
+        d.appendChild(s);
+        d.appendChild(inner);
+        return d;
+    }
+
     function renderMessage(id, payload) {
         var msg = document.createElement("div");
         msg.className = "prism-msg prism-msg--" + (payload.role || "assistant");
@@ -264,10 +282,21 @@
         var blocks = payload.blocks || [];
         for (var i = 0; i < blocks.length; i++) {
             if (blocks[i].visibility === "hidden-internal") continue;
-            msg.appendChild(renderBlock(blocks[i]));
+            var node = renderBlock(blocks[i]);
+            if (blocks[i].visibility === "collapsed") node = wrapCollapsed(node, blocks[i].kind);
+            msg.appendChild(node);
         }
         return msg;
     }
+
+    // In-place theme patch (design §10): update CSS variables on :root, no reload.
+    window.__prismSetTheme = function (b64) {
+        try {
+            var vars = JSON.parse(decodeB64Utf8(b64));
+            var root = document.documentElement;
+            for (var k in vars) if (vars.hasOwnProperty(k)) root.style.setProperty(k, vars[k]);
+        } catch (e) { /* ignore malformed theme */ }
+    };
 
     // --- delta application -----------------------------------------------------
     var state = { epoch: -1, revision: -1 };

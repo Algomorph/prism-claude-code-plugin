@@ -178,3 +178,13 @@ th { background: var(--prism-code-bg, rgba(127,127,127,0.1)); font-weight: 600; 
     font-family: "JetBrains Mono", monospace;
     color: var(--prism-muted, #888888);
 }
+.prism-collapsed { margin: 0.3em 0; }
+.prism-collapsed > summary {
+    cursor: pointer;
+    font-size: 0.8em;
+    color: var(--prism-muted, #888888);
+    user-select: none;
+    outline-offset: 2px;
+}
+.prism-collapsed > summary:hover { color: var(--prism-accent, #3574f0); }
+.prism-collapsed[open] > summary { margin-bottom: 0.3em; }

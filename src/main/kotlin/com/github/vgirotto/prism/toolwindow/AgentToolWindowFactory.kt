@@ -419,7 +419,9 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             val convId = result.sessionId
                             var attached = false
                             val ensureAttached = {
-                                transcriptView.initialize()
+                                transcriptView.initialize(
+                                    com.github.vgirotto.prism.chatshell.ChatShellTheme.currentVars()
+                                )
                                 if (!attached) { attached = true; transcriptController.attachLive(convId) }
                                 transcriptController.resume()
                             }

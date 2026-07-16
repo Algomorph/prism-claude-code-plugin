@@ -37,6 +37,21 @@ class TranscriptController(
     @Volatile private var subscription: Disposable? = null
     @Volatile private var disposed = false
 
+    init {
+        // In-place theme sync (design §10): re-derive + patch on LaF or scheme change.
+        val conn = ApplicationManager.getApplication().messageBus.connect(this)
+        conn.subscribe(com.intellij.ide.ui.LafManagerListener.TOPIC,
+            com.intellij.ide.ui.LafManagerListener { pushTheme() })
+        conn.subscribe(com.intellij.openapi.editor.colors.EditorColorsManager.TOPIC,
+            com.intellij.openapi.editor.colors.EditorColorsListener { pushTheme() })
+    }
+
+    private fun pushTheme() {
+        ApplicationManager.getApplication().invokeLater {
+            if (!disposed) view.setTheme(ChatShellTheme.currentVars())
+        }
+    }
+
     /** Attach a live tailing source for [conversationId]. */
     fun attachLive(conversationId: String) {
         if (disposed) return
