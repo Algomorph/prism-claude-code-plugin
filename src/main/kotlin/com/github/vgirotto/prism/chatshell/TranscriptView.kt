@@ -3,7 +3,9 @@ package com.github.vgirotto.prism.chatshell
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.util.Disposer
+import java.awt.datatransfer.StringSelection
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.jcef.JBCefApp
@@ -49,6 +51,7 @@ class TranscriptView(parentDisposable: Disposable) : Disposable {
         if (supported) JBCefBrowser.createBuilder().setOffScreenRendering(true).build() else null
     private var ackQuery: JBCefJSQuery? = null
     private var linkQuery: JBCefJSQuery? = null
+    private var copyQuery: JBCefJSQuery? = null
 
     @Volatile private var shellLoaded = false
     @Volatile private var disposed = false
@@ -150,6 +153,22 @@ class TranscriptView(parentDisposable: Disposable) : Disposable {
         }
     }
 
+    /** Copy handler: byte-exact source into the IDE clipboard, then a truthful ack (§7). */
+    private fun onCopy(text: String) {
+        val capped = if (text.length > MAX_COPY_CHARS) text.substring(0, MAX_COPY_CHARS) else text
+        ApplicationManager.getApplication().invokeLater {
+            if (disposed) return@invokeLater
+            val ok = try {
+                CopyPasteManager.getInstance().setContents(StringSelection(capped)); true
+            } catch (e: Exception) {
+                log.warn("Clipboard copy failed", e); false
+            }
+            browser?.cefBrowser?.executeJavaScript(
+                "window.__prismCopyDone($ok);", ShellHtmlBuilder.shellUrl, 0
+            )
+        }
+    }
+
     fun setFallbackText(text: String) {
         if (browser == null) fallbackArea.text = text
     }
@@ -161,15 +180,19 @@ class TranscriptView(parentDisposable: Disposable) : Disposable {
     private fun installHandlers(b: JBCefBrowser) {
         val ack = JBCefJSQuery.create(b as com.intellij.ui.jcef.JBCefBrowserBase)
         val link = JBCefJSQuery.create(b as com.intellij.ui.jcef.JBCefBrowserBase)
+        val copy = JBCefJSQuery.create(b as com.intellij.ui.jcef.JBCefBrowserBase)
         ack.addHandler { req -> onAck(req); null }
         link.addHandler { href ->
             if (isSafeExternalLink(href)) ApplicationManager.getApplication().invokeLater { onOpenLink(href) }
             null
         }
+        copy.addHandler { text -> onCopy(text); null }
         ackQuery = ack
         linkQuery = link
+        copyQuery = copy
         Disposer.register(this, ack)
         Disposer.register(this, link)
+        Disposer.register(this, copy)
 
         val client = b.jbCefClient
 
@@ -180,6 +203,7 @@ class TranscriptView(parentDisposable: Disposable) : Disposable {
                 val bootstrap = buildString {
                     append("window.__prismAck=function(p){").append(ack.inject("p")).append("};")
                     append("window.__prismLink=function(h){").append(link.inject("h")).append("};")
+                    append("window.__prismCopy=function(t){").append(copy.inject("t")).append("};")
                 }
                 cefBrowser.executeJavaScript(bootstrap, ShellHtmlBuilder.shellUrl, 0)
                 ApplicationManager.getApplication().invokeLater {
@@ -233,6 +257,7 @@ class TranscriptView(parentDisposable: Disposable) : Disposable {
 
     companion object {
         private const val ACK_TIMEOUT_MS = 4000L
+        private const val MAX_COPY_CHARS = 200_000
 
         private val SAFE_SCHEME = Regex("^(https?)://", RegexOption.IGNORE_CASE)
         fun isSafeExternalLink(href: String): Boolean = SAFE_SCHEME.containsMatchIn(href)
