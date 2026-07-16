@@ -8,8 +8,13 @@ import java.io.File
 
 /**
  * Ties a [TranscriptSource] to the [TranscriptView] via [TranscriptPayloadBuilder]
- * (design §6.3, §6.2). Group 4 does a one-shot static render of the resolved transcript
- * file; Group 5 swaps in a live tailing source behind the same contract.
+ * (design §6.3, §6.2, §8). Owns epoch/revision bookkeeping and a mirror of the visible
+ * messages so it can (a) apply incremental upserts as the session grows and (b) re-render
+ * on resume after a background tab was paused.
+ *
+ * Background-tab batching (R20): while [pause]d, render deltas are withheld (the source's
+ * watcher keeps running so no appends are missed) and coalesced into one full re-render on
+ * [resume].
  */
 class TranscriptController(
     private val project: Project,
@@ -22,16 +27,40 @@ class TranscriptController(
         allowedImageRoots = listOfNotNull(project.basePath?.let { File(it) })
     )
 
+    private val mirror = ArrayList<TranscriptMessage>()
+    private val mirrorIndex = HashMap<String, Int>()
+
+    @Volatile private var currentEpoch = 0L
     @Volatile private var revision = 0L
+    @Volatile private var paused = false
+    @Volatile private var pendingFullRender = false
     @Volatile private var subscription: Disposable? = null
     @Volatile private var disposed = false
 
-    /** Render the current transcript for [conversationId] once (static; Group 4). */
+    /** Attach a live tailing source for [conversationId]. */
+    fun attachLive(conversationId: String) {
+        if (disposed) return
+        val file = resolver.transcriptFile(conversationId) ?: return
+        subscription?.dispose()
+        subscription = LiveTranscriptSource(file).subscribe { state -> onState(state) }
+    }
+
+    /** One-shot static render (Group 4 behavior; used where live tailing isn't wanted). */
     fun renderStatic(conversationId: String) {
         if (disposed) return
         val file = resolver.transcriptFile(conversationId)
-        subscription?.let { it.dispose() }
+        subscription?.dispose()
         subscription = StaticTranscriptSource(file).subscribe { state -> onState(state) }
+    }
+
+    fun pause() { paused = true }
+
+    fun resume() {
+        paused = false
+        if (pendingFullRender) {
+            pendingFullRender = false
+            renderFull()
+        }
     }
 
     private fun onState(state: TranscriptState) {
@@ -47,13 +76,36 @@ class TranscriptController(
                     view.setState(TranscriptView.State.ERROR)
                 }
                 is TranscriptState.Ready -> {
-                    val delta = builder.buildDelta(state.page.messages, epoch = 0, revision = nextRevision())
-                    view.applyDelta(delta)
+                    currentEpoch = state.epoch
+                    resetMirror(state.page.messages)
+                    if (paused) pendingFullRender = true else renderFull()
                 }
-                is TranscriptState.Delta -> {
-                    view.applyDelta(TranscriptDelta(state.epoch, state.revision, state.ops))
+                is TranscriptState.Appended -> {
+                    if (state.epoch != currentEpoch) return@invokeLater
+                    mergeMirror(state.messages)
+                    if (paused) { pendingFullRender = true; return@invokeLater }
+                    val ops = state.messages.filter { it.isRenderable }.map { builder.upsertOp(it) }
+                    if (ops.isNotEmpty()) {
+                        view.applyDelta(TranscriptDelta(currentEpoch, nextRevision(), ops))
+                    }
                 }
             }
+        }
+    }
+
+    private fun renderFull() {
+        view.applyDelta(builder.buildDelta(mirror, currentEpoch, nextRevision()))
+    }
+
+    private fun resetMirror(messages: List<TranscriptMessage>) {
+        mirror.clear(); mirrorIndex.clear()
+        for (m in messages) { mirrorIndex[m.id] = mirror.size; mirror.add(m) }
+    }
+
+    private fun mergeMirror(messages: List<TranscriptMessage>) {
+        for (m in messages) {
+            val idx = mirrorIndex[m.id]
+            if (idx != null) mirror[idx] = m else { mirrorIndex[m.id] = mirror.size; mirror.add(m) }
         }
     }
 

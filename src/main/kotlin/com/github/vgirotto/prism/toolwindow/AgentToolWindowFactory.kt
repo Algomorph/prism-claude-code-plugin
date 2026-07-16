@@ -417,18 +417,22 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             // the pane stays NoTranscriptYet rather than showing a wrong
                             // conversation (e.g. a Codex session until its wiring lands).
                             val convId = result.sessionId
-                            val initAndRender = {
+                            var attached = false
+                            val ensureAttached = {
                                 transcriptView.initialize()
-                                transcriptController.renderStatic(convId)
+                                if (!attached) { attached = true; transcriptController.attachLive(convId) }
+                                transcriptController.resume()
                             }
                             if (toolWindow.contentManager.selectedContent === content) {
-                                initAndRender()
+                                ensureAttached()
                             }
+                            // Lazy init + background-tab batching: resume rendering when this
+                            // tab is selected, pause (coalesce deltas) when another is (R20).
                             toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
                                 override fun selectionChanged(event: ContentManagerEvent) {
-                                    if (event.content === content && event.operation == ContentManagerEvent.ContentOperation.add) {
-                                        initAndRender()
-                                    }
+                                    if (event.content !== content) return
+                                    if (event.operation == ContentManagerEvent.ContentOperation.add) ensureAttached()
+                                    else transcriptController.pause()
                                 }
                             })
                         } catch (e: Exception) {
