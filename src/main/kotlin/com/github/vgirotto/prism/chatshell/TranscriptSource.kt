@@ -14,13 +14,19 @@ data class TranscriptPage(
     val beforeCursor: String?,
 )
 
-/** The observable states of a transcript source (design §6.3). */
+/**
+ * The observable states of a transcript source (design §6.3). The source deals in
+ * *messages*; the controller owns epoch/revision bookkeeping and payload building. [epoch]
+ * is owned by the source (it knows about rotation/reset boundaries); it bumps on a fresh
+ * [Ready] after a rotation so the controller can reset the view.
+ */
 sealed interface TranscriptState {
     object Loading : TranscriptState
     object NoTranscriptYet : TranscriptState
     /** Bounded window — most-recent page only, NOT the whole history. */
-    data class Ready(val page: TranscriptPage) : TranscriptState
-    data class Delta(val epoch: Long, val revision: Long, val ops: List<DeltaOp>) : TranscriptState
+    data class Ready(val page: TranscriptPage, val epoch: Long = 0) : TranscriptState
+    /** New or updated messages appended since the last state, within [epoch]. */
+    data class Appended(val epoch: Long, val messages: List<TranscriptMessage>) : TranscriptState
     object Reconnecting : TranscriptState
     data class Error(val error: Throwable) : TranscriptState
 }
@@ -66,7 +72,7 @@ class StaticTranscriptSource(
                 val start = maxOf(0, all.size - windowSize)
                 val window = all.subList(start, all.size).toList()
                 val cursor = if (start > 0) start.toString() else null
-                onState(TranscriptState.Ready(TranscriptPage(window, cursor)))
+                onState(TranscriptState.Ready(TranscriptPage(window, cursor), epoch = 0))
             }
         } catch (e: Exception) {
             onState(TranscriptState.Error(e))
