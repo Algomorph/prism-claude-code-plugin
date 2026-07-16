@@ -39,7 +39,8 @@ data class ToolUseBlock(
     val name: String,
     /** Pretty-printed input JSON (rendered as text, never parsed as HTML). */
     val inputJson: String,
-    override val visibility: Visibility = Visibility.VISIBLE,
+    /** Collapsed by default so tool calls render behind a disclosure, not inline (§6.3). */
+    override val visibility: Visibility = Visibility.COLLAPSED,
 ) : Block
 
 data class ToolResultBlock(
@@ -52,7 +53,8 @@ data class ToolResultBlock(
     /** File byte offset+length backing an on-demand "show full" — never the payload. */
     val sourceOffset: Long? = null,
     val sourceLength: Int? = null,
-    override val visibility: Visibility = Visibility.VISIBLE,
+    /** Collapsed by default so tool output renders behind a disclosure, not inline (§6.3). */
+    override val visibility: Visibility = Visibility.COLLAPSED,
 ) : Block
 
 data class ImageBlock(

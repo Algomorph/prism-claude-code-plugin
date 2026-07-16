@@ -56,6 +56,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     companion object {
         val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
         val DIFF_PANEL_KEY = Key.create<DiffPanel>("AgentDiffPanel")
+        val SESSION_DISPOSABLE_KEY = Key.create<com.intellij.openapi.Disposable>("AgentSessionDisposable")
 
         private var sessionCounter = 0
 
@@ -366,6 +367,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             )
             content.isCloseable = true
             content.putUserData(DIFF_PANEL_KEY, diffPanel)
+            content.putUserData(SESSION_DISPOSABLE_KEY, disposable)
 
             // The session lives and dies with the tab, and only tab *disposal* means the
             // tab is gone. Reordering tabs by dragging one removes its Content with
@@ -404,38 +406,54 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     pm.setActiveSession(result.sessionId)
 
+                    // Resolve runtime support off the EDT (the capability probe can block for
+                    // seconds) so the transcript can render an explicit "unavailable" state
+                    // rather than a permanent empty pane when this CLI lacks --session-id (#4).
+                    val deterministicSupported = try { pm.isDeterministicSessionSupported() } catch (_: Exception) { true }
+
                     ApplicationManager.getApplication().invokeLater {
                         try {
                             terminalWidget.createTerminalSession(result.connector)
                             terminalWidget.start()
                             log.info("Agent session started: $sessionName [${result.sessionId}]")
 
-                            // Lazily initialize the transcript browser + do a one-shot static
-                            // render when this tab is (or becomes) selected (R20). The
-                            // conversation id equals the session id when --session-id is
-                            // supported (Claude); otherwise the resolved file won't exist and
-                            // the pane stays NoTranscriptYet rather than showing a wrong
-                            // conversation (e.g. a Codex session until its wiring lands).
+                            // Lazily initialize the transcript browser + attach the live tail
+                            // when this tab is (or becomes) selected (R20). The conversation id
+                            // equals the session id when --session-id is supported (Claude);
+                            // otherwise the pane shows an explicit "unavailable" state (e.g. a
+                            // Codex session until its transcript wiring lands).
                             val convId = result.sessionId
                             var attached = false
                             val ensureAttached = {
                                 transcriptView.initialize(
                                     com.github.vgirotto.prism.chatshell.ChatShellTheme.currentVars()
                                 )
-                                if (!attached) { attached = true; transcriptController.attachLive(convId) }
-                                transcriptController.resume()
+                                if (deterministicSupported) {
+                                    if (!attached) { attached = true; transcriptController.attachLive(convId) }
+                                    transcriptController.resume()
+                                } else {
+                                    transcriptView.setState(
+                                        com.github.vgirotto.prism.chatshell.TranscriptView.State.UNAVAILABLE
+                                    )
+                                }
                             }
                             if (toolWindow.contentManager.selectedContent === content) {
                                 ensureAttached()
                             }
                             // Lazy init + background-tab batching: resume rendering when this
                             // tab is selected, pause (coalesce deltas) when another is (R20).
-                            toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
+                            // Registered for removal with the tab disposable so it does not
+                            // accumulate on the shared content manager (review #6).
+                            val selectionListener = object : ContentManagerListener {
                                 override fun selectionChanged(event: ContentManagerEvent) {
                                     if (event.content !== content) return
                                     if (event.operation == ContentManagerEvent.ContentOperation.add) ensureAttached()
                                     else transcriptController.pause()
                                 }
+                            }
+                            toolWindow.contentManager.addContentManagerListener(selectionListener)
+                            Disposer.register(disposable, com.intellij.openapi.Disposable {
+                                toolWindow.contentManager.removeContentManagerListener(selectionListener)
                             })
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)

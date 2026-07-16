@@ -52,30 +52,46 @@ class ClaudeValidationService {
      */
     fun supportsDeterministicSessions(claudeCommand: String = "claude"): Boolean {
         // Primary: capability probe.
-        try {
-            val process = ProcessBuilder(claudeCommand, "--help").redirectErrorStream(true).start()
-            val out = process.inputStream.bufferedReader().readText()
-            val completed = process.waitFor(8, TimeUnit.SECONDS)
-            if (completed && out.contains("--session-id")) {
-                log.debug("Claude advertises --session-id — deterministic sessions supported")
-                return true
-            }
-        } catch (e: Exception) {
-            log.debug("Claude capability probe failed", e)
+        val help = runProbe(listOf(claudeCommand, "--help"), 8)
+        if (help != null && help.contains("--session-id")) {
+            log.debug("Claude advertises --session-id — deterministic sessions supported")
+            return true
         }
-        // Fallback: version floor.
-        return VersionGate.meetsMinimumVersion(getClaudeVersion())
+        // Fallback: version floor — probe the SAME configured command, not PATH's claude.
+        return VersionGate.meetsMinimumVersion(getClaudeVersion(claudeCommand))
     }
 
     /** Parse the semantic version from `claude --version` (e.g. "2.1.210 (Claude Code)"). */
     fun getClaudeVersion(claudeCommand: String = "claude"): String? {
+        val out = runProbe(listOf(claudeCommand, "--version"), 5) ?: return null
+        return Regex("""(\d+)\.(\d+)\.(\d+)""").find(out)?.value
+    }
+
+    /**
+     * Run a short-lived probe command and return its combined output, or null on failure.
+     * The output is drained on a daemon thread so a child that never closes stdout cannot
+     * block us past [timeoutSec]; on timeout the process is force-killed (review #11 — a
+     * bare `readText()` before `waitFor` can hang indefinitely).
+     */
+    private fun runProbe(command: List<String>, timeoutSec: Long): String? {
         return try {
-            val process = ProcessBuilder(claudeCommand, "--version").redirectErrorStream(true).start()
-            val out = process.inputStream.bufferedReader().readText()
-            process.waitFor(5, TimeUnit.SECONDS)
-            Regex("""(\d+)\.(\d+)\.(\d+)""").find(out)?.value
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val sb = StringBuilder()
+            val drain = Thread {
+                try {
+                    process.inputStream.bufferedReader().use { r -> r.forEachLine { sb.appendLine(it) } }
+                } catch (_: Exception) { /* stream closed on kill */ }
+            }.apply { isDaemon = true; start() }
+            val completed = process.waitFor(timeoutSec, TimeUnit.SECONDS)
+            if (!completed) {
+                process.destroyForcibly()
+                log.debug("Probe timed out: ${command.joinToString(" ")}")
+                return null
+            }
+            drain.join(1000)
+            sb.toString()
         } catch (e: Exception) {
-            log.debug("Failed to read Claude version", e)
+            log.debug("Probe failed: ${command.joinToString(" ")}", e)
             null
         }
     }

@@ -36,6 +36,8 @@ class TranscriptPayloadBuilderTest {
         assertEquals(listOf("text", "thinking", "toolUse", "toolResult", "toolReference"),
             payload.blocks.map { it.kind })
         assertEquals("collapsed", payload.blocks[1].visibility) // thinking
+        assertEquals("collapsed", payload.blocks[2].visibility) // tool_use (disclosure)
+        assertEquals("collapsed", payload.blocks[3].visibility) // tool_result (disclosure)
         assertEquals("collapsed", payload.blocks[4].visibility) // tool_reference
         assertEquals("hello \$x^2\$", payload.blocks[0].markdown) // math delimiters intact
     }

@@ -12,7 +12,6 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CountDownLatch
@@ -38,7 +37,10 @@ class TranscriptSecurityBrowserTest {
 
     @Test
     fun `sanitization neutralizes hostile transcript content`() {
-        assumeTrue(JBCefApp.isSupported(), "JCEF unavailable on this runner")
+        // Hard failure, not a skip: the dedicated -PbrowserTests job must exercise the
+        // security controls, so a runner without JCEF is a CI failure, not a green pass
+        // (review #10).
+        assertTrue(JBCefApp.isSupported(), "JCEF must be available under -PbrowserTests")
         val disposable = Disposer.newDisposable()
         try {
             val browser = AtomicReference<JBCefBrowser>()
@@ -92,7 +94,7 @@ class TranscriptSecurityBrowserTest {
 
     @Test
     fun `no remote resource request occurs`() {
-        assumeTrue(JBCefApp.isSupported(), "JCEF unavailable on this runner")
+        assertTrue(JBCefApp.isSupported(), "JCEF must be available under -PbrowserTests")
         val disposable = Disposer.newDisposable()
         try {
             val viewRef = AtomicReference<TranscriptView>()
@@ -107,8 +109,8 @@ class TranscriptSecurityBrowserTest {
                 }
                 view.initialize()
             }
-            // Give the shell time to load, then push content that references remote assets.
-            Thread.sleep(4000)
+            // Push content that references remote assets. The delta is queued until the shell
+            // loads, so no blind sleep is needed.
             onEdt {
                 viewRef.get().applyDelta(
                     TranscriptDelta(
@@ -127,7 +129,15 @@ class TranscriptSecurityBrowserTest {
                     )
                 )
             }
-            Thread.sleep(3000)
+            // Wait for a REAL render: the ack only fires after the delta rendered and laid
+            // out. Without this a shell that never rendered would pass vacuously (review #10).
+            val start = System.currentTimeMillis()
+            var acked = false
+            while (System.currentTimeMillis() - start < 30_000) {
+                if (viewRef.get().lastAckRevisionForTest >= 1L) { acked = true; break }
+                Thread.sleep(100)
+            }
+            assertTrue(acked, "delta was never acked — the render pipeline did not run")
             assertEquals(0, viewRef.get().externalRequestCount.get(),
                 "the interceptor must have blocked/observed zero external requests")
             onEdt { frame?.dispose() }

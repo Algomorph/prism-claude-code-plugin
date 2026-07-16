@@ -198,6 +198,10 @@ class AgentProcessManager(private val project: Project) : Disposable {
 
     @Volatile private var cachedDeterministicSupport: Boolean? = null
 
+    /** Public accessor for the cached `--session-id` capability probe: the transcript pane
+     *  shows an explicit "unavailable" state when this is false (design §6.5, R19). */
+    fun isDeterministicSessionSupported(): Boolean = deterministicSessionsSupported()
+
     /** Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19). */
     private fun deterministicSessionsSupported(): Boolean {
         cachedDeterministicSupport?.let { return it }

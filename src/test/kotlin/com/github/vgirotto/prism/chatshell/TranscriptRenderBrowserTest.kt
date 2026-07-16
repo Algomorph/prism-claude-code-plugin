@@ -13,7 +13,6 @@ import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CountDownLatch
@@ -34,7 +33,7 @@ class TranscriptRenderBrowserTest {
 
     @Test
     fun `math renders, code is not math, source is byte-exact, images resolve`() {
-        assumeTrue(JBCefApp.isSupported(), "JCEF unavailable on this runner")
+        assertTrue(JBCefApp.isSupported(), "JCEF must be available under -PbrowserTests")
         val disposable = Disposer.newDisposable()
         try {
             val browser = AtomicReference<JBCefBrowser>()

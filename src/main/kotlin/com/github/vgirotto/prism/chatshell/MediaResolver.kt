@@ -33,8 +33,12 @@ object MediaResolver {
             return Blocked("disallowed media type: $mediaType")
         }
         if (base64Data.isNullOrEmpty()) return Blocked("empty image data")
+        val trimmed = base64Data.trim()
+        // Bound BEFORE decoding: decoded size is ~3/4 of the encoded length. Reject an
+        // oversized payload without ever allocating its decoded form (review #3).
+        if (trimmed.length.toLong() / 4L * 3L > MAX_BYTES) return Blocked("image too large")
         val bytes = try {
-            Base64.getDecoder().decode(base64Data.trim())
+            Base64.getDecoder().decode(trimmed)
         } catch (_: Exception) {
             return Blocked("undecodable base64")
         }
@@ -66,6 +70,10 @@ object MediaResolver {
     /** Decode (MIME-by-decode), enforce pixel cap, re-encode to canonical PNG, inline. */
     private fun reencode(bytes: ByteArray): MediaResult {
         if (bytes.size > MAX_BYTES) return Blocked("image too large")
+        // Read dimensions from the header and enforce the pixel cap BEFORE decoding the full
+        // raster, so a small but huge-dimensioned file (decompression bomb) can't force a
+        // multi-hundred-MB allocation inside ImageIO.read (review #3).
+        if (!dimensionsWithinCap(bytes)) return Blocked("image dimensions out of bounds")
         val image = try {
             ImageIO.read(ByteArrayInputStream(bytes))
         } catch (_: Exception) {
@@ -78,5 +86,34 @@ object MediaResolver {
         if (!ok || out.size() == 0) return Blocked("re-encode failed")
         val b64 = Base64.getEncoder().encodeToString(out.toByteArray())
         return Resolved("data:image/png;base64,$b64")
+    }
+
+    /**
+     * Inspect only the format header via an [javax.imageio.ImageReader] to learn the pixel
+     * dimensions without decoding the pixels. Returns false if the declared dimensions
+     * exceed [MAX_PIXELS]. Undecodable/unknown formats return true here and are rejected
+     * later by the actual decode (this guard is purely a pre-allocation size gate).
+     */
+    private fun dimensionsWithinCap(bytes: ByteArray): Boolean {
+        return try {
+            ImageIO.createImageInputStream(ByteArrayInputStream(bytes)).use { iis ->
+                if (iis == null) return true
+                val readers = ImageIO.getImageReaders(iis)
+                if (!readers.hasNext()) return true
+                val reader = readers.next()
+                try {
+                    reader.input = iis
+                    val w = reader.getWidth(reader.minIndex).toLong()
+                    val h = reader.getHeight(reader.minIndex).toLong()
+                    val pixels = w * h
+                    pixels in 1..MAX_PIXELS.toLong()
+                } finally {
+                    reader.dispose()
+                }
+            }
+        } catch (_: Exception) {
+            // Header unreadable: let the full decode make the final call.
+            true
+        }
     }
 }

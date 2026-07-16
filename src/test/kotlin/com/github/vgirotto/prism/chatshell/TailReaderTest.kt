@@ -56,4 +56,32 @@ class TailReaderTest {
         val reader = TailReader(File("/no/such/file.jsonl"))
         assertTrue(reader.poll().completeLines.isEmpty())
     }
+
+    @Test
+    fun `reassembles a multibyte character split across two polls`() {
+        val f = tempFile()
+        val reader = TailReader(f)
+        // "café" — 'é' is two bytes (0xC3 0xA9). Write up to the first byte, then the rest.
+        f.writeBytes(byteArrayOf('c'.code.toByte(), 'a'.code.toByte(), 'f'.code.toByte(), 0xC3.toByte()))
+        assertTrue(reader.poll().completeLines.isEmpty(), "no newline yet, and byte is mid-character")
+        f.appendBytes(byteArrayOf(0xA9.toByte(), '\n'.code.toByte()))
+        assertEquals(listOf("café"), reader.poll().completeLines, "the split character must be reassembled intact")
+    }
+
+    @Test
+    fun `detects rotation when a same-or-larger file replaces the original`() {
+        val f = tempFile()
+        f.writeText("aaaa\n")
+        val reader = TailReader(f)
+        assertEquals(listOf("aaaa"), reader.poll().completeLines)
+        // Replace via write-to-temp + atomic move so the path gets a genuinely different
+        // underlying file (distinct inode/fileKey) at an equal-or-greater size — length
+        // alone would not reveal this rotation; file identity must.
+        val replacement = Files.createTempFile("prism-tail-repl", ".jsonl")
+        Files.write(replacement, "bbbbbbbb\n".toByteArray())
+        Files.move(replacement, f.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        val res = reader.poll()
+        assertTrue(res.rotated, "a replaced file is a rotation even at the same or larger size")
+        assertEquals(listOf("bbbbbbbb"), res.completeLines, "the new file's beginning is not skipped")
+    }
 }

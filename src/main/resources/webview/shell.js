@@ -110,6 +110,11 @@
         copy.setAttribute("role", "button");
         copy.title = "Copy LaTeX";
         copy.textContent = "Copy";
+        // Bind the clipboard bridge DIRECTLY to this host-created node (security §6.8,
+        // review #2). Delegated document handlers keyed on a class name could be triggered
+        // by hostile markdown forging class="prism-math__copy"; a direct listener on a node
+        // WE built cannot be forged.
+        copy.addEventListener("click", function (e) { e.stopPropagation(); doCopy(copy); });
         var code = document.createElement("span");
         code.className = "prism-math__code";
         code.textContent = entry.raw; // byte-exact original source incl. delimiters (§7)
@@ -163,15 +168,17 @@
                 }
             })(links[i]);
         }
+        // Every <img> reaching us via MARKDOWN is replaced with a neutral marker (review
+        // #2). Legitimate transcript images arrive as typed `image` blocks that renderBlock
+        // builds from a MediaResolver-validated data URI — they never pass through here — so
+        // markdown-authored images (which bypass the resolver, its size/pixel caps, and its
+        // SVG rejection) must not be dereferenced by the browser.
         var imgs = root.querySelectorAll ? root.querySelectorAll("img") : [];
         for (var j = 0; j < imgs.length; j++) {
-            var src = imgs[j].getAttribute("src") || "";
-            if (src.indexOf("data:image/") !== 0) {
-                var marker = document.createElement("span");
-                marker.className = "prism-image--blocked";
-                marker.textContent = imgs[j].getAttribute("alt") || "[blocked image]";
-                imgs[j].parentNode.replaceChild(marker, imgs[j]);
-            }
+            var marker = document.createElement("span");
+            marker.className = "prism-image--blocked";
+            marker.textContent = imgs[j].getAttribute("alt") || "[blocked image]";
+            imgs[j].parentNode.replaceChild(marker, imgs[j]);
         }
         return root;
     }
@@ -271,15 +278,28 @@
         return d;
     }
 
+    function isToolKind(kind) {
+        return kind === "toolUse" || kind === "toolResult" || kind === "toolReference";
+    }
+
     function renderMessage(id, payload) {
         var msg = document.createElement("div");
         msg.className = "prism-msg prism-msg--" + (payload.role || "assistant");
         msg.setAttribute("data-prism-id", id);
-        var role = document.createElement("div");
-        role.className = "prism-msg__role";
-        role.textContent = payload.roleLabel || payload.role || "";
-        msg.appendChild(role);
         var blocks = payload.blocks || [];
+        // Show the "You"/"Claude" header only when the message carries primary content.
+        // A message that is purely tool call/result/reference (e.g. a user record that only
+        // holds a tool_result) gets no naked role header above its disclosure (review #5).
+        var hasPrimary = false;
+        for (var p = 0; p < blocks.length; p++) {
+            if (blocks[p].visibility !== "hidden-internal" && !isToolKind(blocks[p].kind)) { hasPrimary = true; break; }
+        }
+        if (hasPrimary) {
+            var role = document.createElement("div");
+            role.className = "prism-msg__role";
+            role.textContent = payload.roleLabel || payload.role || "";
+            msg.appendChild(role);
+        }
         for (var i = 0; i < blocks.length; i++) {
             if (blocks[i].visibility === "hidden-internal") continue;
             var node = renderBlock(blocks[i]);
@@ -288,6 +308,23 @@
         }
         return msg;
     }
+
+    // Show/replace a status banner (loading, no-transcript, unavailable, reconnecting,
+    // error) so these states are never a blank pane (review #4). Empty text clears it.
+    window.__prismSetStatus = function (b64) {
+        var text = "";
+        try { text = b64 ? decodeB64Utf8(b64) : ""; } catch (e) { text = ""; }
+        var el = document.getElementById("prism-status");
+        if (!text) { if (el && el.parentNode) el.parentNode.removeChild(el); return; }
+        if (!el) {
+            el = document.createElement("div");
+            el.id = "prism-status";
+            el.className = "prism-status";
+            el.setAttribute("role", "status");
+            document.body.insertBefore(el, document.body.firstChild);
+        }
+        el.textContent = text;
+    };
 
     // In-place theme patch (design §10): update CSS variables on :root, no reload.
     window.__prismSetTheme = function (b64) {
@@ -380,8 +417,9 @@
     }
 
     document.addEventListener("click", function (e) {
-        var copy = e.target.closest && e.target.closest(".prism-math__copy");
-        if (copy) { doCopy(copy); e.stopPropagation(); return; }
+        // Copy is bound directly on host-created nodes in buildWidget (review #2); the
+        // document handler only owns reveal/collapse, which is a harmless CSS toggle even
+        // if a class were forged.
         var w = e.target.closest && e.target.closest(".prism-math");
         if (w) {
             var wasOpen = w.classList.contains("is-open");
