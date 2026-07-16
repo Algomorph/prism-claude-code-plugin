@@ -120,4 +120,25 @@ class TranscriptParserTest {
         val msgs = fixture("large-session.jsonl")
         assertEquals(816, msgs.size)
     }
+
+    @Test
+    fun `redacted thinking with empty text yields no thinking block`() {
+        // Extended-thinking turns persist as {"thinking":"","signature":"…"} — the reasoning
+        // text is encrypted server-side, never stored. It must not become an empty "Thinking"
+        // disclosure. The accompanying text block is still rendered.
+        val line = """{"type":"assistant","uuid":"a","message":{"model":"claude-opus-4-8",""" +
+            """"content":[{"type":"thinking","thinking":"","signature":"AbC123"},""" +
+            """{"type":"text","text":"the answer"}]}}"""
+        val msg = parser.parseLine(line)!!
+        assertEquals(1, msg.blocks.size, "the empty thinking block is dropped, text is kept")
+        assertTrue(msg.blocks.single() is TextBlock)
+    }
+
+    @Test
+    fun `non-empty thinking is still rendered`() {
+        val line = """{"type":"assistant","uuid":"a","message":{"model":"claude-opus-4-8",""" +
+            """"content":[{"type":"thinking","thinking":"let me reason","signature":"s"}]}}"""
+        val msg = parser.parseLine(line)!!
+        assertEquals("let me reason", (msg.blocks.single() as ThinkingBlock).text)
+    }
 }
