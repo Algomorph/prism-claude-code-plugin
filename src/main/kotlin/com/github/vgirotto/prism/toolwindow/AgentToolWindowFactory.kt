@@ -314,6 +314,18 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 add(terminalWidget.component, BorderLayout.CENTER)
             }
 
+            // Hybrid chat shell: rendered transcript above the [toolbar + terminal] strip.
+            // The browser is created lazily on first tab-select (R20).
+            val transcriptView = com.github.vgirotto.prism.chatshell.TranscriptView(disposable)
+            transcriptView.onOpenLink = { href ->
+                try { com.intellij.ide.BrowserUtil.browse(href) } catch (_: Exception) {}
+            }
+            val transcriptController = com.github.vgirotto.prism.chatshell.TranscriptController(project, transcriptView)
+            Disposer.register(disposable, transcriptController)
+            val chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
+                project, transcriptView.component, terminalWithToolbar
+            )
+
             // Each tab gets its own DiffPanel (no parent-sharing issues)
             val diffPanel = DiffPanel(project) {
                 // When history is cleared, reset ALL DiffPanels across all tabs
@@ -328,7 +340,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 toolWindow.anchor == ToolWindowAnchor.RIGHT
 
             val splitter = JBSplitter(isSideDock, if (isSideDock) 0.6f else 0.65f).apply {
-                firstComponent = terminalWithToolbar
+                firstComponent = chatShellPanel
                 dividerWidth = 3
             }
 
@@ -397,6 +409,28 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             terminalWidget.createTerminalSession(result.connector)
                             terminalWidget.start()
                             log.info("Agent session started: $sessionName [${result.sessionId}]")
+
+                            // Lazily initialize the transcript browser + do a one-shot static
+                            // render when this tab is (or becomes) selected (R20). The
+                            // conversation id equals the session id when --session-id is
+                            // supported (Claude); otherwise the resolved file won't exist and
+                            // the pane stays NoTranscriptYet rather than showing a wrong
+                            // conversation (e.g. a Codex session until its wiring lands).
+                            val convId = result.sessionId
+                            val initAndRender = {
+                                transcriptView.initialize()
+                                transcriptController.renderStatic(convId)
+                            }
+                            if (toolWindow.contentManager.selectedContent === content) {
+                                initAndRender()
+                            }
+                            toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
+                                override fun selectionChanged(event: ContentManagerEvent) {
+                                    if (event.content === content && event.operation == ContentManagerEvent.ContentOperation.add) {
+                                        initAndRender()
+                                    }
+                                }
+                            })
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
                             notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))

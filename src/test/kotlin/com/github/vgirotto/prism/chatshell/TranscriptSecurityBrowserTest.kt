@@ -105,7 +105,7 @@ class TranscriptSecurityBrowserTest {
                     setSize(800, 600)
                     isVisible = true
                 }
-                view.loadShell()
+                view.initialize()
             }
             // Give the shell time to load, then push content that references remote assets.
             Thread.sleep(4000)
