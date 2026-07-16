@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Default agent setting**: settings now include a default CLI plus separate executable paths for Claude Code and Codex.
 - **Codex conversation history**: the History panel can browse Codex sessions from `~/.codex/sessions`, filtered to the current IDE project by `cwd`.
 - **Full toolbar for Codex**: the Resume, Compact, Clear, Model, Effort, and Cost buttons now work in Codex sessions, mapped to their Codex equivalents. Resume/Compact/Clear send the identical slash command; Model and Effort drive Codex's interactive `/model` picker (model list and reasoning level) via keystrokes; Cost is a dropdown that opens Codex's `/usage` token-activity view for the daily, weekly, or cumulative period.
+- **Hybrid WYSIWYG chat shell**: a rendered transcript pane now sits above the terminal strip in each session tab. It reads the session's JSONL transcript and renders the committed conversation with typeset **KaTeX math** (click a formula to reveal and copy its byte-exact LaTeX source), **inline images**, collapsible tool calls/results, and thinking disclosures — while every interactive action (input, approvals, pickers, plan mode, `$`-skills, smart paste) stays in the real terminal below, unchanged.
+  - Security: transcript content is treated as hostile input. Rendering runs entirely in the embedded browser through an escape → marked → **DOMPurify** → trusted-KaTeX/image-node pipeline under a strict CSP that pins each script by hash; a media resolver decodes/validates/re-encodes images (no SVG, no remote loads), and a request interceptor guarantees no external requests.
+  - The transcript follows the session live (incremental tailing), matches the IDE light/dark theme in place, and is localized (en/es/pt). The terminal strip keeps a minimum height and can always be expanded to full height.
+  - Currently requires a Claude CLI with `--session-id`; Codex sessions keep the terminal experience while transcript support lands, and otherwise the terminal keeps working and the transcript pane reports it is unavailable.
 
 ### Changed
 
@@ -36,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced Claude-specific session, process, terminal, settings, toolbar, and tool-window classes with agent-aware equivalents.
 - Split conversation history parsing behind a `HistoryReader` interface with dedicated Claude and Codex readers.
 - Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
+- Added the transcript stack (non-lossy JSONL parser, secure JCEF render pipeline, incremental live tailing, `/resume` rebinding) behind an agent-specific seam so Codex can plug in its own transcript source.
 
 ## [1.2.2] — 2026-06-30
 

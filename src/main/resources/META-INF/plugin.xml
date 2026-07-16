@@ -49,15 +49,19 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h2>v1.3.0 — Codex Integration</h2>
+    <h2>v1.3.0 — Codex Integration + Hybrid Chat Shell</h2>
     <ul>
         <li>New: <strong>Multi-agent</strong> — start Claude Code or Codex sessions from the same tool window</li>
         <li>New: <strong>CLI picker</strong> on the New Session button when more than one agent is installed</li>
         <li>New: <strong>Default agent</strong> setting and dedicated Codex executable path</li>
         <li>New: <strong>Codex history</strong> — Conversation History reads sessions from <code>~/.codex/sessions</code></li>
         <li>New: <strong>Full toolbar for Codex</strong> — Resume, Compact, Clear, Model, Effort, and Cost now work in Codex sessions, mapped to their Codex equivalents</li>
+        <li>New: a rendered <strong>transcript pane</strong> above the terminal — typeset <strong>KaTeX math</strong> (click to reveal &amp; copy byte-exact LaTeX), inline images, collapsible tool calls/results and thinking; all interaction stays in the terminal below, unchanged.</li>
+        <li>Live: the transcript follows the session as it runs, matches the IDE light/dark theme in place, and is localized (en/es/pt).</li>
+        <li>Safe: transcript content is rendered in-browser through escape → marked → DOMPurify → trusted nodes under a strict CSP; images are decoded/validated/re-encoded (no SVG, no remote loads).</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
         <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
+        <li>Note: the live transcript pane currently requires a Claude CLI with <code>--session-id</code>; Codex sessions keep the terminal experience while transcript support lands.</li>
     </ul>
     <h2>v1.2.2 — Smart Paste on Linux</h2>
     <ul>
