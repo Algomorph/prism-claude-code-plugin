@@ -57,6 +57,16 @@ class MediaResolverTest {
     }
 
     @Test
+    fun `oversized encoded payload is blocked before it is decoded`() {
+        // Longer than MAX_BYTES * 4/3 of base64 → decoded would exceed the cap. Must be
+        // rejected by the length pre-check without allocating the decoded array.
+        val huge = "A".repeat((MediaResolver.MAX_BYTES / 3 * 4) + 8)
+        val r = MediaResolver.resolveBase64("image/png", huge)
+        assertTrue(r is MediaResolver.Blocked)
+        assertTrue((r as MediaResolver.Blocked).reason.contains("too large"))
+    }
+
+    @Test
     fun `garbage base64 is blocked`() {
         assertTrue(MediaResolver.resolveBase64("image/png", "!!!!not base64!!!!") is MediaResolver.Blocked)
     }

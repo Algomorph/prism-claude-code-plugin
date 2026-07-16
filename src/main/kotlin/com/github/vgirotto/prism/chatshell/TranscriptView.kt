@@ -23,6 +23,7 @@ import org.cef.network.CefRequest
 import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
 import java.util.ArrayDeque
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.JComponent
@@ -39,7 +40,7 @@ import javax.swing.JPanel
  */
 class TranscriptView(private val parentDisposable: Disposable) : Disposable {
 
-    enum class State { LOADING, NO_TRANSCRIPT_YET, READY, RECONNECTING, ERROR }
+    enum class State { LOADING, NO_TRANSCRIPT_YET, READY, RECONNECTING, ERROR, UNAVAILABLE }
 
     private val log = Logger.getInstance(TranscriptView::class.java)
     private val supported = JBCefApp.isSupported()
@@ -66,13 +67,25 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
     /** External resource requests the interceptor blocked — asserted == 0 by tests. */
     val externalRequestCount = AtomicInteger(0)
 
+    /** Revision of the last successfully-rendered delta (ack after render+layout). Lets a
+     *  browser test wait for a real render instead of a blind sleep (review #10). */
+    @Volatile
+    var lastAckRevisionForTest: Long = -1L
+        private set
+
     @Volatile var state: State = State.LOADING
         private set
 
     var onOpenLink: (String) -> Unit = {}
 
+    /** Invoked when a delta render fails or times out — the controller re-renders from its
+     *  authoritative mirror so a dropped/errored delta can't leave stale DOM (review #9). */
+    var onRecoveryNeeded: () -> Unit = {}
+
     private val queue = ArrayDeque<TranscriptDelta>()
     private var inFlight: TranscriptDelta? = null
+    @Volatile private var recovering = false
+    @Volatile private var pendingStatusB64: String? = null
     private val scheduler = AppExecutorUtil.getAppScheduledExecutorService()
 
     init {
@@ -138,8 +151,8 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         scheduler.schedule({
             ApplicationManager.getApplication().invokeLater {
                 if (!disposed && inFlight === expected) {
-                    log.debug("Ack timeout epoch=${expected.epoch} rev=${expected.revision}")
-                    inFlight = null; pump()
+                    log.warn("Ack timeout epoch=${expected.epoch} rev=${expected.revision} — recovering")
+                    triggerRecovery()
                 }
             }
         }, ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -150,10 +163,30 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         ApplicationManager.getApplication().invokeLater {
             if (disposed || ack.epoch != currentEpoch) return@invokeLater
             val cur = inFlight
-            if (cur != null && cur.epoch == ack.epoch && cur.revision == ack.revision) {
-                inFlight = null; pump()
+            if (cur == null || cur.epoch != ack.epoch || cur.revision != ack.revision) return@invokeLater
+            if (ack.status != "ok") {
+                log.warn("Render error ack epoch=${ack.epoch} rev=${ack.revision} status=${ack.status} — recovering")
+                triggerRecovery()
+                return@invokeLater
             }
+            recovering = false
+            lastAckRevisionForTest = ack.revision
+            inFlight = null; pump()
         }
+    }
+
+    /**
+     * A delta failed to render (JS error) or never acked (timeout). Drop the pending work
+     * and ask the controller for a full reset+rebuild. The [recovering] latch prevents an
+     * infinite reset loop if the recovery render itself keeps failing — it clears on the
+     * next successful ack. Must be called on the EDT.
+     */
+    private fun triggerRecovery() {
+        inFlight = null
+        queue.clear()
+        if (recovering) { pump(); return }
+        recovering = true
+        onRecoveryNeeded()
     }
 
     private fun onCopy(text: String) {
@@ -179,7 +212,41 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         if (browser == null) fallbackArea.text = text
     }
 
-    fun setState(newState: State) { state = newState }
+    fun setState(newState: State) {
+        state = newState
+        applyStatus(statusFor(newState))
+    }
+
+    private fun statusFor(s: State): String? {
+        fun m(key: String) = com.github.vgirotto.prism.i18n.ClaudeBundle.message(key)
+        return when (s) {
+            State.LOADING -> m("chatshell.loading")
+            State.NO_TRANSCRIPT_YET -> m("chatshell.noTranscript")
+            State.RECONNECTING -> m("chatshell.reconnecting")
+            State.ERROR -> m("chatshell.error")
+            State.UNAVAILABLE -> m("chatshell.unavailable")
+            State.READY -> null // content replaces the banner
+        }
+    }
+
+    /**
+     * Render a status line in whichever surface is active so no state is ever a blank pane
+     * (review #4): the Swing text area when JCEF is unavailable, otherwise the shell's
+     * status banner. Null/empty clears it. Deferred until the shell has loaded.
+     */
+    private fun applyStatus(text: String?) {
+        val b64 = if (text.isNullOrEmpty()) "" else Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
+        ApplicationManager.getApplication().invokeLater {
+            if (disposed) return@invokeLater
+            val b = browser
+            if (b == null) {
+                fallbackArea.text = text ?: ""
+                return@invokeLater
+            }
+            if (shellLoaded) b.cefBrowser.executeJavaScript("window.__prismSetStatus(\"$b64\");", ShellHtmlBuilder.shellUrl, 0)
+            else pendingStatusB64 = b64
+        }
+    }
 
     /** Patch the shell's CSS variables in place — no reload (design §10). */
     fun setTheme(vars: Map<String, String>) {
@@ -221,6 +288,10 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
                 ApplicationManager.getApplication().invokeLater {
                     shellLoaded = true
                     if (state == State.LOADING) state = State.READY
+                    pendingStatusB64?.let { s ->
+                        cefBrowser.executeJavaScript("window.__prismSetStatus(\"$s\");", ShellHtmlBuilder.shellUrl, 0)
+                        pendingStatusB64 = null
+                    }
                     pump()
                 }
             }

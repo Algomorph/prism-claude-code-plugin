@@ -38,6 +38,13 @@ class TranscriptController(
     @Volatile private var disposed = false
 
     init {
+        // Render-failure recovery (review #9): if a delta errors or times out in the view,
+        // re-emit the whole visible transcript from our authoritative mirror.
+        view.onRecoveryNeeded = {
+            ApplicationManager.getApplication().invokeLater {
+                if (!disposed) renderFull()
+            }
+        }
         // In-place theme sync (design §10): re-derive + patch on LaF or scheme change.
         val conn = ApplicationManager.getApplication().messageBus.connect(this)
         conn.subscribe(com.intellij.ide.ui.LafManagerListener.TOPIC,
