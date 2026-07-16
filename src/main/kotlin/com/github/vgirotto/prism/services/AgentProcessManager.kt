@@ -168,10 +168,23 @@ class AgentProcessManager(private val project: Project) : Disposable {
             try {
                 Thread.sleep(500)
                 if (process.isAlive) {
-                    val cmd = "$launchCommand\n"
+                    // Deterministic session identity for the hybrid chat shell (design §6.5,
+                    // R2/R19): for Claude, launch with `--session-id <id>` so the transcript
+                    // file is exactly <id>.jsonl. Gated on the runtime capability probe — if
+                    // this Claude does not support it (or the agent is Codex, whose transcript
+                    // wiring is separate), launch bare; the transcript pane degrades gracefully
+                    // and the terminal strip keeps working.
+                    val flag = if (cli == AgentCli.CLAUDE && deterministicSessionsSupported()) {
+                        session.conversationId = session.id
+                        " --session-id ${session.id}"
+                    } else ""
+                    val cmd = "$launchCommand$flag\n"
                     process.outputStream.write(cmd.toByteArray(StandardCharsets.UTF_8))
                     process.outputStream.flush()
-                    log.info("Sent ${cli.name.lowercase()} command to shell [${session.id}]")
+                    log.info(
+                        "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
+                            if (flag.isEmpty()) "" else " (--session-id)"
+                    )
                 }
             } catch (e: Exception) {
                 log.warn("Failed to send ${cli.name.lowercase()} command [${session.id}]", e)
@@ -181,6 +194,21 @@ class AgentProcessManager(private val project: Project) : Disposable {
         notifyStateListeners(session)
 
         return SessionResult(session.id, process, connector)
+    }
+
+    @Volatile private var cachedDeterministicSupport: Boolean? = null
+
+    /** Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19). */
+    private fun deterministicSessionsSupported(): Boolean {
+        cachedDeterministicSupport?.let { return it }
+        val path = AgentSettingsState.getInstance().claudePath
+        val supported = try {
+            ClaudeValidationService.getInstance().supportsDeterministicSessions(path)
+        } catch (_: Exception) {
+            false
+        }
+        cachedDeterministicSupport = supported
+        return supported
     }
 
     private fun onUserInput(session: AgentSession) {

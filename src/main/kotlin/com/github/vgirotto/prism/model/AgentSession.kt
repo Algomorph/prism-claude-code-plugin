@@ -19,6 +19,14 @@ class AgentSession(
     val cli: AgentCli = AgentCli.DEFAULT,
 ) : Disposable {
 
+    /**
+     * The Claude *conversation* id — the JSONL file we read (design §6.5, R2). Distinct
+     * from [id], which is the stable process-map key. Seeded to [id] for a fresh session
+     * (launched with `--session-id <id>`); a native `/resume` may repoint this to another
+     * conversation *without* changing [id], so the process map is never corrupted.
+     */
+    @Volatile var conversationId: String = id
+
     var process: Process? = null
     var connector: AgentTtyConnector? = null
     var idleTimer: Timer? = null

@@ -43,6 +43,66 @@ class ClaudeValidationService {
     }
 
     /**
+     * Runtime-compatibility gate for the hybrid chat shell (design §6.5, §9, R19). The
+     * feature depends on deterministic session identity (`claude --session-id <uuid>`) and
+     * the tested JSONL schema. The **capability probe is authoritative** (does `--help`
+     * advertise `--session-id`?); the version string is only a fallback. When this returns
+     * false the strip/terminal keep working and the transcript pane shows an explicit
+     * "unavailable for this CLI version" state — never a guessed or broken file.
+     */
+    fun supportsDeterministicSessions(claudeCommand: String = "claude"): Boolean {
+        // Primary: capability probe.
+        try {
+            val process = ProcessBuilder(claudeCommand, "--help").redirectErrorStream(true).start()
+            val out = process.inputStream.bufferedReader().readText()
+            val completed = process.waitFor(8, TimeUnit.SECONDS)
+            if (completed && out.contains("--session-id")) {
+                log.debug("Claude advertises --session-id — deterministic sessions supported")
+                return true
+            }
+        } catch (e: Exception) {
+            log.debug("Claude capability probe failed", e)
+        }
+        // Fallback: version floor.
+        return VersionGate.meetsMinimumVersion(getClaudeVersion())
+    }
+
+    /** Parse the semantic version from `claude --version` (e.g. "2.1.210 (Claude Code)"). */
+    fun getClaudeVersion(claudeCommand: String = "claude"): String? {
+        return try {
+            val process = ProcessBuilder(claudeCommand, "--version").redirectErrorStream(true).start()
+            val out = process.inputStream.bufferedReader().readText()
+            process.waitFor(5, TimeUnit.SECONDS)
+            Regex("""(\d+)\.(\d+)\.(\d+)""").find(out)?.value
+        } catch (e: Exception) {
+            log.debug("Failed to read Claude version", e)
+            null
+        }
+    }
+
+    object VersionGate {
+        /** Tentative floor set in the Group 0 spike (first schema carrying uuid/parentUuid). */
+        const val MIN_SUPPORTED_VERSION = "2.1.193"
+
+        fun meetsMinimumVersion(version: String?): Boolean {
+            if (version == null) return false
+            return compareVersions(version, MIN_SUPPORTED_VERSION) >= 0
+        }
+
+        /** Numeric dotted-version comparison; returns <0, 0, >0. */
+        fun compareVersions(a: String, b: String): Int {
+            val pa = a.split(".").mapNotNull { it.toIntOrNull() }
+            val pb = b.split(".").mapNotNull { it.toIntOrNull() }
+            for (i in 0 until maxOf(pa.size, pb.size)) {
+                val x = pa.getOrElse(i) { 0 }
+                val y = pb.getOrElse(i) { 0 }
+                if (x != y) return x.compareTo(y)
+            }
+            return 0
+        }
+    }
+
+    /**
      * Checks if a process is still alive and reports errors if dead.
      * @return true if process is alive, false if dead
      */
