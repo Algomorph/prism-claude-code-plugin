@@ -163,3 +163,18 @@ th { background: var(--prism-code-bg, rgba(127,127,127,0.1)); font-weight: 600; 
     border-radius: 4px;
     padding: 0.05em 0.4em;
 }
+.prism-compact-divider {
+    text-align: center;
+    font-size: 0.8em;
+    color: var(--prism-muted, #888888);
+    border-top: 1px dashed var(--prism-border, #c8c8c8);
+    border-bottom: 1px dashed var(--prism-border, #c8c8c8);
+    padding: 0.3em 0;
+    margin: 0.8em 0;
+}
+.prism-tool-ref {
+    display: inline-block;
+    font-size: 0.82em;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--prism-muted, #888888);
+}

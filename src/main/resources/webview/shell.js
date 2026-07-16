@@ -1,33 +1,28 @@
 /* Prism hybrid chat-shell — browser-side runtime.
  *
- * This is the ONLY code that turns transcript content into DOM. It runs inside
- * the JCEF page. Kotlin never emits HTML (design §6.1/§6.2, R18): it sends a
- * base64-encoded TranscriptDelta (typed blocks + pre-resolved media, never
- * markup), and this file renders + sanitizes it here.
+ * The ONLY code that turns transcript content into DOM. Runs inside JCEF. Kotlin sends a
+ * base64 TranscriptDelta of typed blocks (never HTML, R18); this file renders + sanitizes.
  *
- * Security pipeline, per block (design §6.8):
- *   1. escape raw '<' in the markdown source  -> marked cannot emit passthrough
- *      HTML tags (blockquote '>' and entities '&' are preserved so real
- *      markdown still works).
- *   2. marked.parse                            -> HTML from the now-inert source.
- *   3. DOMPurify.sanitize (pinned, allowlist)  -> strip handlers/script/iframe/…
- *   4. insert trusted nodes (images already resolved to data: URIs by the Kotlin
- *      MediaResolver; KaTeX math widgets are added in Group 3) AFTER sanitize,
- *      so hostile text can never forge one.
+ * Security pipeline per markdown block (design §6.8):
+ *   marked (with a math tokenizer extension, not regex pre-passes — §7) -> DOMPurify
+ *   (pinned, allowlist) -> harden links/images -> replace math placeholders with TRUSTED
+ *   KaTeX widgets built AFTER sanitize (so hostile text can never forge one).
  *
- * The host injects two globals before this script's IIFE runs:
- *   window.__prismAck(payloadJson)  — post an ack to Kotlin (JBCefJSQuery).
- *   window.__prismLink(href)        — route a link click to the OS browser.
- * Both are optional (absent in a plain browser harness); calls are guarded.
+ * Math is a real marked tokenizer token that only fills gaps marked's own code rules leave
+ * (fenced/inline code is consumed first), so `$` inside code is never math. The raw matched
+ * source (incl. original delimiters) is preserved for byte-exact copy.
+ *
+ * Host-injected globals (all optional; calls guarded):
+ *   window.__prismAck(json)      — post a render/layout ack (JBCefJSQuery).
+ *   window.__prismLink(href)     — open an http(s) link in the OS browser.
+ *   window.__prismCopy(text)     — copy text via the IDE clipboard; host replies
+ *                                   window.__prismCopyDone(ok) so "Copied" is truthful.
  */
 (function () {
     "use strict";
 
     var DP = window.DOMPurify;
 
-    // Sanitizer allowlist — formatting, code, links, images, and the KaTeX span
-    // classes Group 3 will populate. No script/style/iframe/object/svg, no event
-    // handlers. data: URIs are permitted only for <img> (CSP also enforces this).
     var SANITIZE_CONFIG = {
         ALLOWED_TAGS: [
             "p", "br", "hr", "span", "div",
@@ -41,20 +36,10 @@
         ALLOWED_ATTR: ["href", "title", "src", "alt", "class", "colspan", "rowspan", "align"],
         FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "svg", "math", "form", "input", "template"],
         FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "style"],
-        ALLOW_DATA_ATTR: false,
-        // data: only ever appears on <img>, whose src Kotlin already produced.
-        ADD_URI_SAFE_ATTR: [],
-        RETURN_TRUSTED_TYPE: false
+        ALLOW_DATA_ATTR: false
     };
 
-    // Link schemes we let through to the OS browser. Everything else is inert.
     var SAFE_LINK_SCHEMES = /^(https?):/i;
-
-    function escapeTagOpen(src) {
-        // Kill HTML tags at the source without breaking blockquotes ('>') or
-        // entities ('&'): only '<' can start a tag.
-        return String(src).replace(/</g, "&lt;");
-    }
 
     function decodeB64Utf8(b64) {
         var bin = atob(b64);
@@ -63,16 +48,105 @@
         return new TextDecoder("utf-8").decode(bytes);
     }
 
-    // Render a markdown string to a sanitized DocumentFragment. Exposed on
-    // window for browser-level tests to assert against directly.
+    // --- math tokenizer (marked extension) -------------------------------------
+    // Per-parse store of captured math; index encoded into an inert <code> placeholder
+    // that survives DOMPurify, then swapped for a trusted KaTeX widget post-sanitize.
+    var mathStore = [];
+
+    function mathPlaceholder(tex, display, raw) {
+        var idx = mathStore.length;
+        mathStore.push({ tex: tex, display: display, raw: raw });
+        return '<code class="__pm">' + idx + "</code>";
+    }
+
+    var blockMath = {
+        name: "prismBlockMath",
+        level: "block",
+        start: function (src) { var i = src.indexOf("$$"); return i < 0 ? undefined : i; },
+        tokenizer: function (src) {
+            var m = /^\$\$([\s\S]+?)\$\$/.exec(src) || /^\\\[([\s\S]+?)\\\]/.exec(src);
+            if (m) return { type: "prismBlockMath", raw: m[0], text: m[1] };
+        },
+        renderer: function (t) { return mathPlaceholder(t.text, true, t.raw); }
+    };
+
+    var inlineMath = {
+        name: "prismInlineMath",
+        level: "inline",
+        start: function (src) { var i = src.search(/[\$\\]/); return i < 0 ? undefined : i; },
+        tokenizer: function (src) {
+            // \( … \) always math.
+            var p = /^\\\(([\s\S]+?)\\\)/.exec(src);
+            if (p) return { type: "prismInlineMath", raw: p[0], text: p[1] };
+            // $ … $ with a conservative currency-avoiding grammar: no space just inside the
+            // delimiters, closing $ not immediately followed by a digit ("$5 and $10").
+            var m = /^\$(?!\s)((?:\\.|[^\$\\\n])+?)(?<!\s)\$(?!\d)/.exec(src);
+            if (m) return { type: "prismInlineMath", raw: m[0], text: m[1] };
+        },
+        renderer: function (t) { return mathPlaceholder(t.text, false, t.raw); }
+    };
+
+    if (window.marked && window.marked.use) {
+        window.marked.use({ extensions: [blockMath, inlineMath] });
+    }
+
+    function renderKatex(tex, display) {
+        return window.katex.renderToString(tex, {
+            displayMode: display, throwOnError: false, strict: false, trust: false
+        });
+    }
+
+    function buildWidget(entry) {
+        var wrap = document.createElement("span");
+        wrap.className = "prism-math " + (entry.display ? "prism-math--block" : "prism-math--inline");
+        wrap.tabIndex = 0;
+        wrap.setAttribute("role", "button");
+        wrap.setAttribute("aria-label", "Math — click to show LaTeX source");
+
+        var source = document.createElement("span");
+        source.className = "prism-math__source";
+        var copy = document.createElement("span");
+        copy.className = "prism-math__copy";
+        copy.setAttribute("role", "button");
+        copy.title = "Copy LaTeX";
+        copy.textContent = "Copy";
+        var code = document.createElement("span");
+        code.className = "prism-math__code";
+        code.textContent = entry.raw; // byte-exact original source incl. delimiters (§7)
+        source.appendChild(copy);
+        source.appendChild(code);
+
+        var render = document.createElement("span");
+        render.className = "prism-math__render";
+        try {
+            render.innerHTML = renderKatex(entry.tex, entry.display); // trusted KaTeX output
+        } catch (e) {
+            var er = document.createElement("code");
+            er.className = "math-error";
+            er.textContent = entry.tex;
+            render.appendChild(er);
+        }
+        wrap.appendChild(source);
+        wrap.appendChild(render);
+        return wrap;
+    }
+
+    function swapMathPlaceholders(root) {
+        var phs = root.querySelectorAll ? root.querySelectorAll("code.__pm") : [];
+        for (var i = 0; i < phs.length; i++) {
+            var idx = parseInt(phs[i].textContent, 10);
+            var entry = mathStore[idx];
+            if (entry) phs[i].parentNode.replaceChild(buildWidget(entry), phs[i]);
+        }
+    }
+
+    // --- sanitize + harden -----------------------------------------------------
     function renderMarkdownToClean(md) {
-        var inert = escapeTagOpen(md == null ? "" : md);
-        var html = window.marked ? window.marked.parse(inert, { gfm: true, breaks: false }) : inert;
+        mathStore = [];
+        var html = window.marked ? window.marked.parse(md == null ? "" : md, { gfm: true, breaks: false }) : String(md);
         return DP.sanitize(html, SANITIZE_CONFIG);
     }
 
-    // After sanitize, harden links (route http(s) to the OS browser; neutralize
-    // anything else) and images (only data: survives; others become a marker).
     function hardenNode(root) {
         var links = root.querySelectorAll ? root.querySelectorAll("a[href]") : [];
         for (var i = 0; i < links.length; i++) {
@@ -84,7 +158,6 @@
                         if (window.__prismLink) { try { window.__prismLink(href); } catch (x) {} }
                     });
                 } else {
-                    // javascript:, file:, vbscript:, data:, mailto:, …  — inert.
                     a.removeAttribute("href");
                     a.classList.add("prism-link--blocked");
                 }
@@ -94,8 +167,6 @@
         for (var j = 0; j < imgs.length; j++) {
             var src = imgs[j].getAttribute("src") || "";
             if (src.indexOf("data:image/") !== 0) {
-                // Any non-data image (remote, file:, unresolved) is replaced with a
-                // neutral marker — never left as a live element that could fetch.
                 var marker = document.createElement("span");
                 marker.className = "prism-image--blocked";
                 marker.textContent = imgs[j].getAttribute("alt") || "[blocked image]";
@@ -105,9 +176,15 @@
         return root;
     }
 
-    // Build the DOM node for one typed block payload (design §6.2/§6.3). The
-    // math/byte-exact-copy widgets and richer tool chrome arrive in Group 3;
-    // here we render text/markdown safely and stub the other kinds inertly.
+    // Render markdown (with math + hardening) into a target element.
+    function renderMarkdownInto(el, md) {
+        el.innerHTML = renderMarkdownToClean(md);
+        swapMathPlaceholders(el);
+        hardenNode(el);
+        return el;
+    }
+
+    // --- block + message rendering ---------------------------------------------
     function renderBlock(block) {
         var el = document.createElement("div");
         el.className = "prism-block prism-block--" + (block.kind || "unknown") +
@@ -117,8 +194,7 @@
             case "thinking": {
                 var body = document.createElement("div");
                 body.className = "prism-block__body";
-                body.innerHTML = renderMarkdownToClean(block.markdown || "");
-                hardenNode(body);
+                renderMarkdownInto(body, block.markdown || "");
                 el.appendChild(body);
                 break;
             }
@@ -132,7 +208,7 @@
                 if (block.toolInput) {
                     var inp = document.createElement("pre");
                     inp.className = "prism-tool__input";
-                    inp.textContent = block.toolInput; // textContent: never parsed as HTML
+                    inp.textContent = block.toolInput;
                     t.appendChild(inp);
                 }
                 el.appendChild(t);
@@ -148,7 +224,7 @@
             case "image": {
                 if (block.imageDataUri && block.imageDataUri.indexOf("data:image/") === 0) {
                     var img = document.createElement("img");
-                    img.src = block.imageDataUri;       // trusted: Kotlin MediaResolver produced it
+                    img.src = block.imageDataUri;
                     img.alt = block.imageAlt || "image";
                     img.className = "prism-image";
                     el.appendChild(img);
@@ -160,10 +236,16 @@
                 }
                 break;
             }
+            case "compactBoundary": {
+                var div = document.createElement("div");
+                div.className = "prism-compact-divider";
+                div.textContent = block.label || "Conversation compacted";
+                el.appendChild(div);
+                break;
+            }
             default: {
-                // toolReference / unknown / anything future — a small neutral marker.
                 var u = document.createElement("span");
-                u.className = "prism-unsupported";
+                u.className = block.kind === "toolReference" ? "prism-tool-ref" : "prism-unsupported";
                 u.textContent = block.label || "[unsupported content]";
                 el.appendChild(u);
             }
@@ -181,24 +263,20 @@
         msg.appendChild(role);
         var blocks = payload.blocks || [];
         for (var i = 0; i < blocks.length; i++) {
-            if (blocks[i].visibility === "hidden-internal") continue; // preserved in model, not shown
+            if (blocks[i].visibility === "hidden-internal") continue;
             msg.appendChild(renderBlock(blocks[i]));
         }
         return msg;
     }
 
     // --- delta application -----------------------------------------------------
-
     var state = { epoch: -1, revision: -1 };
-
     function contentEl() { return document.getElementById("prism-content"); }
+    function cssEscape(s) { return String(s).replace(/["\\]/g, "\\$&"); }
 
     function applyOperation(op) {
         var root = contentEl();
-        if (op.op === "reset") {
-            root.innerHTML = "";
-            return;
-        }
+        if (op.op === "reset") { root.innerHTML = ""; return; }
         if (op.op === "remove") {
             var gone = root.querySelector('[data-prism-id="' + cssEscape(op.id) + '"]');
             if (gone) gone.parentNode.removeChild(gone);
@@ -207,65 +285,100 @@
         if (op.op === "upsert") {
             var node = renderMessage(op.id, op.payload || {});
             var existing = root.querySelector('[data-prism-id="' + cssEscape(op.id) + '"]');
-            if (existing) {
-                existing.parentNode.replaceChild(node, existing);
-            } else {
-                root.appendChild(node);
-            }
+            if (existing) existing.parentNode.replaceChild(node, existing);
+            else root.appendChild(node);
         }
     }
 
-    function cssEscape(s) {
-        return String(s).replace(/["\\]/g, "\\$&");
+    function atBottom() {
+        var d = document.documentElement;
+        return (d.scrollHeight - d.scrollTop - d.clientHeight) < 40;
     }
 
-    function stickyBottom(before) {
-        // Keep pinned to bottom unless the user scrolled up.
-        var doc = document.documentElement;
-        var atBottom = (doc.scrollHeight - doc.scrollTop - doc.clientHeight) < 40;
-        return atBottom;
-    }
-
-    // Entry point the host calls: base64(JSON(TranscriptDelta)). Nothing but
-    // base64 is ever interpolated into the executeJavaScript string (R15).
     window.__prismApplyDelta = function (b64) {
-        var status = "ok";
-        var epoch = state.epoch, revision = state.revision;
+        var status = "ok", epoch = state.epoch, revision = state.revision;
         try {
             var delta = JSON.parse(decodeB64Utf8(b64));
-            epoch = delta.epoch;
-            revision = delta.revision;
-            // A reset/epoch change wipes prior content.
-            if (delta.epoch !== state.epoch) {
-                contentEl().innerHTML = "";
-            }
-            var pin = stickyBottom();
+            epoch = delta.epoch; revision = delta.revision;
+            if (delta.epoch !== state.epoch) contentEl().innerHTML = "";
+            var pin = atBottom();
             var ops = delta.operations || [];
             for (var i = 0; i < ops.length; i++) applyOperation(ops[i]);
-            state.epoch = delta.epoch;
-            state.revision = delta.revision;
+            state.epoch = delta.epoch; state.revision = delta.revision;
             if (pin) window.scrollTo(0, document.documentElement.scrollHeight);
         } catch (e) {
             status = "error:" + (e && e.message ? e.message : "unknown");
         }
-        // Ack AFTER layout: rAF guarantees the browser has laid out inserted
-        // nodes (and any images/KaTeX) before we report the revision rendered.
         var ack = function () {
             if (window.__prismAck) {
-                try { window.__prismAck(JSON.stringify({ epoch: epoch, revision: revision, status: status })); }
-                catch (x) {}
+                try { window.__prismAck(JSON.stringify({ epoch: epoch, revision: revision, status: status })); } catch (x) {}
             }
         };
-        if (window.requestAnimationFrame) {
-            window.requestAnimationFrame(function () { window.requestAnimationFrame(ack); });
-        } else {
-            ack();
-        }
+        if (window.requestAnimationFrame) window.requestAnimationFrame(function () { window.requestAnimationFrame(ack); });
+        else ack();
         return status;
     };
 
-    // Expose the pure renderer for browser-level tests.
+    // --- click-to-reveal-source + byte-exact copy interaction ------------------
+    var pendingCopyBtn = null;
+
+    function collapseAll() {
+        var open = document.querySelectorAll(".prism-math.is-open");
+        for (var i = 0; i < open.length; i++) open[i].classList.remove("is-open");
+    }
+
+    function flashCopied(btn) {
+        btn.classList.add("is-copied");
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.classList.remove("is-copied"); btn.textContent = "Copy"; }, 1200);
+    }
+
+    window.__prismCopyDone = function (ok) {
+        if (pendingCopyBtn && ok) flashCopied(pendingCopyBtn);
+        pendingCopyBtn = null;
+    };
+
+    function doCopy(btn) {
+        var codeEl = btn.parentNode.querySelector(".prism-math__code");
+        var text = codeEl ? codeEl.textContent : "";
+        if (window.__prismCopy) {
+            pendingCopyBtn = btn;
+            try { window.__prismCopy(text); } catch (e) { pendingCopyBtn = null; }
+        } else {
+            // No host bridge (test harness): optimistic flash.
+            flashCopied(btn);
+        }
+    }
+
+    document.addEventListener("click", function (e) {
+        var copy = e.target.closest && e.target.closest(".prism-math__copy");
+        if (copy) { doCopy(copy); e.stopPropagation(); return; }
+        var w = e.target.closest && e.target.closest(".prism-math");
+        if (w) {
+            var wasOpen = w.classList.contains("is-open");
+            collapseAll();
+            if (!wasOpen) w.classList.add("is-open");
+            e.stopPropagation();
+            return;
+        }
+        collapseAll();
+    });
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") { collapseAll(); return; }
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var w = document.activeElement && document.activeElement.closest
+            ? document.activeElement.closest(".prism-math") : null;
+        if (w) {
+            var wasOpen = w.classList.contains("is-open");
+            collapseAll();
+            if (!wasOpen) w.classList.add("is-open");
+            e.preventDefault();
+        }
+    });
+
+    // Exposed for browser-level tests.
     window.__prismRenderMarkdown = renderMarkdownToClean;
+    window.__prismRenderInto = renderMarkdownInto;
     window.__prismHardenNode = hardenNode;
     window.__prismReady = true;
 })();
