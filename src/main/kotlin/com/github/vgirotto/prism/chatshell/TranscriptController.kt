@@ -3,6 +3,7 @@ package com.github.vgirotto.prism.chatshell
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
 import java.io.File
 
@@ -30,12 +31,20 @@ class TranscriptController(
     private val mirror = ArrayList<TranscriptMessage>()
     private val mirrorIndex = HashMap<String, Int>()
 
-    @Volatile private var currentEpoch = 0L
+    // viewEpoch drives the view + deltas and bumps on every stream boundary (attach, rotation,
+    // rebind), so a rebind is a clean reset the browser can't confuse with the old stream.
+    // sourceEpoch is the tailing source's own epoch, used only to match its Appended emissions.
+    @Volatile private var viewEpoch = 0L
+    @Volatile private var sourceEpoch = -1L
     @Volatile private var revision = 0L
     @Volatile private var paused = false
     @Volatile private var pendingFullRender = false
     @Volatile private var subscription: Disposable? = null
     @Volatile private var disposed = false
+
+    /** The conversation the transcript is currently bound to (mutable across `/resume`, R2). */
+    @Volatile private var boundConvId: String? = null
+    @Volatile private var siblingWatcher: SiblingTranscriptWatcher? = null
 
     init {
         // Render-failure recovery (review #9): if a delta errors or times out in the view,
@@ -59,12 +68,44 @@ class TranscriptController(
         }
     }
 
-    /** Attach a live tailing source for [conversationId]. */
+    /** Attach a live tailing source for [conversationId], and watch for a `/resume` switch. */
     fun attachLive(conversationId: String) {
         if (disposed) return
         val file = resolver.transcriptFile(conversationId) ?: return
+        boundConvId = conversationId
         subscription?.dispose()
         subscription = LiveTranscriptSource(file).subscribe { state -> onState(state) }
+        ensureSiblingWatcher(file.parentFile)
+    }
+
+    /**
+     * Rebind the transcript to a conversation the user switched to via `/resume` (§9). Treated
+     * as a fresh stream: the source is re-attached, the mirror cleared, and [viewEpoch] bumped
+     * so the browser resets rather than merging into the old conversation.
+     */
+    private fun rebind(conversationId: String) {
+        if (disposed || conversationId == boundConvId) return
+        val file = resolver.transcriptFile(conversationId) ?: return
+        log.info("Transcript rebinding to resumed conversation $conversationId")
+        boundConvId = conversationId
+        subscription?.dispose()
+        mirror.clear(); mirrorIndex.clear()
+        sourceEpoch = -1L
+        subscription = LiveTranscriptSource(file).subscribe { state -> onState(state) }
+    }
+
+    private fun ensureSiblingWatcher(dir: File?) {
+        if (dir == null || siblingWatcher != null) return
+        val watcher = SiblingTranscriptWatcher(
+            dir = dir,
+            boundConvId = { boundConvId ?: "" },
+            isActive = { !paused && !disposed },
+            onSwitch = { convId ->
+                ApplicationManager.getApplication().invokeLater { if (!disposed) rebind(convId) }
+            },
+        ).start()
+        siblingWatcher = watcher
+        Disposer.register(this, watcher)
     }
 
     /** One-shot static render (Group 4 behavior; used where live tailing isn't wanted). */
@@ -98,17 +139,18 @@ class TranscriptController(
                     view.setState(TranscriptView.State.ERROR)
                 }
                 is TranscriptState.Ready -> {
-                    currentEpoch = state.epoch
+                    sourceEpoch = state.epoch
+                    viewEpoch++ // fresh view stream: first attach, rotation, or rebind
                     resetMirror(state.page.messages)
                     if (paused) pendingFullRender = true else renderFull()
                 }
                 is TranscriptState.Appended -> {
-                    if (state.epoch != currentEpoch) return@invokeLater
+                    if (state.epoch != sourceEpoch) return@invokeLater
                     mergeMirror(state.messages)
                     if (paused) { pendingFullRender = true; return@invokeLater }
                     val ops = state.messages.filter { it.isRenderable }.map { builder.upsertOp(it) }
                     if (ops.isNotEmpty()) {
-                        view.applyDelta(TranscriptDelta(currentEpoch, nextRevision(), ops))
+                        view.applyDelta(TranscriptDelta(viewEpoch, nextRevision(), ops))
                     }
                 }
             }
@@ -116,7 +158,7 @@ class TranscriptController(
     }
 
     private fun renderFull() {
-        view.applyDelta(builder.buildDelta(mirror, currentEpoch, nextRevision()))
+        view.applyDelta(builder.buildDelta(mirror, viewEpoch, nextRevision()))
     }
 
     private fun resetMirror(messages: List<TranscriptMessage>) {
