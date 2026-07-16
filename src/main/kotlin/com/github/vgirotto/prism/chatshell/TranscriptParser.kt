@@ -110,7 +110,12 @@ class TranscriptParser {
     private fun contentBlock(obj: JsonObject): List<Block> {
         return when (obj.get("type")?.asString) {
             "text" -> listOf(TextBlock(obj.get("text")?.asStringSafe() ?: ""))
-            "thinking" -> listOf(ThinkingBlock(obj.get("thinking")?.asStringSafe() ?: ""))
+            // Redacted thinking arrives as `{"thinking":"","signature":"…"}` — the reasoning
+            // text is encrypted server-side and never persisted, so there is nothing to show.
+            // Emit no block rather than an empty "Thinking" disclosure that expands to nothing.
+            "thinking" -> (obj.get("thinking")?.asStringSafe() ?: "").let { t ->
+                if (t.isBlank()) emptyList() else listOf(ThinkingBlock(t))
+            }
             "tool_use" -> {
                 val name = obj.get("name")?.asString ?: "tool"
                 val tid = obj.get("id")?.asString ?: ""

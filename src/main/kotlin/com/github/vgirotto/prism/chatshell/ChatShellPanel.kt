@@ -24,8 +24,9 @@ import javax.swing.JPanel
  */
 class ChatShellPanel(
     project: Project,
+    toolbar: JComponent,
     transcriptComponent: JComponent,
-    private val terminalWithToolbar: JComponent,
+    private val terminalComponent: JComponent,
 ) : JPanel(BorderLayout()) {
 
     private val props = PropertiesComponent.getInstance(project)
@@ -41,17 +42,25 @@ class ChatShellPanel(
     }
 
     init {
-        val header = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), JBUI.scale(2))).apply {
+        // The command toolbar and the expand toggle share one row at the very top of the
+        // chat (just below the tabs): actions fill the width, the toggle is pinned right
+        // (design §6.4, HITL). The toolbar sits above the transcript so it is visible
+        // regardless of the splitter proportion, unlike its old spot atop the terminal.
+        val toggleWrap = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), JBUI.scale(2))).apply {
             add(expandButton)
+        }
+        val header = JPanel(BorderLayout()).apply {
+            add(toolbar, BorderLayout.CENTER)
+            add(toggleWrap, BorderLayout.EAST)
         }
         val transcriptWithHeader = JPanel(BorderLayout()).apply {
             add(header, BorderLayout.NORTH)
             add(transcriptComponent, BorderLayout.CENTER)
         }
 
-        terminalWithToolbar.minimumSize = Dimension(0, JBUI.scale(MIN_TERMINAL_PX))
+        terminalComponent.minimumSize = Dimension(0, JBUI.scale(MIN_TERMINAL_PX))
         splitter.firstComponent = transcriptWithHeader
-        splitter.secondComponent = terminalWithToolbar
+        splitter.secondComponent = terminalComponent
         splitter.dividerWidth = JBUI.scale(3)
         splitter.setHonorComponentsMinimumSize(true)
 

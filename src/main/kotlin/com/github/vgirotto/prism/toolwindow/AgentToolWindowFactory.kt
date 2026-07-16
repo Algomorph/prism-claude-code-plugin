@@ -310,13 +310,15 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             )
 
             val toolbar = AgentToolbar(project)
-            val terminalWithToolbar = JPanel(BorderLayout()).apply {
-                add(toolbar, BorderLayout.NORTH)
+            // The toolbar now lives in the chat header (ChatShellPanel), not atop the
+            // terminal — so this strip is the terminal alone. Wrapper kept for the
+            // splitter's min-height guard.
+            val terminalPanel = JPanel(BorderLayout()).apply {
                 add(terminalWidget.component, BorderLayout.CENTER)
             }
 
-            // Hybrid chat shell: rendered transcript above the [toolbar + terminal] strip.
-            // The browser is created lazily on first tab-select (R20).
+            // Hybrid chat shell: rendered transcript (with the command toolbar in its header)
+            // above the terminal strip. The browser is created lazily on first tab-select (R20).
             val transcriptView = com.github.vgirotto.prism.chatshell.TranscriptView(disposable)
             transcriptView.onOpenLink = { href ->
                 try { com.intellij.ide.BrowserUtil.browse(href) } catch (_: Exception) {}
@@ -324,7 +326,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             val transcriptController = com.github.vgirotto.prism.chatshell.TranscriptController(project, transcriptView)
             Disposer.register(disposable, transcriptController)
             val chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
-                project, transcriptView.component, terminalWithToolbar
+                project, toolbar, transcriptView.component, terminalPanel
             )
 
             // Each tab gets its own DiffPanel (no parent-sharing issues)
