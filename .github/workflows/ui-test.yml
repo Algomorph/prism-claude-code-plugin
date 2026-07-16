@@ -4,8 +4,14 @@ name: UI Test (JCEF browser)
 # real DOM in an embedded Chromium via JBCefBrowser and assert on the rendered
 # result (KaTeX widgets, image resolution, sanitization) and on the CEF request
 # interceptor ("no remote request occurred"). They need a display, so this job
-# provides one with Xvfb and opts the tag in via `-PbrowserTests`. Tests still
-# self-skip (JUnit assumeTrue) if JBCefApp.isSupported() is false on the runner.
+# provides one with Xvfb and opts the tag in via `-PbrowserTests`.
+#
+# CRITICAL: JCEF self-disables under a headless AWT unless BOTH flags below are
+# set. Without `ide.browser.jcef.headless.enabled=true`, JBCefApp.isSupported()
+# returns false, every browser test self-skips (assumeTrue), and the job goes
+# green having validated NOTHING — that vacuous-CI gap once hid a total-failure
+# render bug (blank transcript pane). The verify step at the end fails the job
+# if the browser tests did not actually execute, so the gap cannot reopen.
 
 on:
   push:
@@ -46,8 +52,30 @@ jobs:
           xvfb-run -a --server-args="-screen 0 1920x1080x24" \
             ./gradlew test -PbrowserTests --tests "*chatshell*" --info
         env:
-          # JCEF requires a non-headless AWT.
-          _JAVA_OPTIONS: "-Djava.awt.headless=false"
+          # JCEF requires a non-headless AWT AND an explicit opt-in to run under a
+          # virtual (headless-flagged) display. Both are mandatory — see header note.
+          _JAVA_OPTIONS: "-Djava.awt.headless=false -Dide.browser.jcef.headless.enabled=true"
+
+      - name: Verify browser tests actually executed (guard against vacuous CI)
+        if: always()
+        run: |
+          shopt -s nullglob
+          files=(build/test-results/test/TEST-*chatshell*BrowserTest.xml)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No browser-test result files found — the JCEF suite did not run."
+            exit 1
+          fi
+          total=0; skipped=0
+          for f in "${files[@]}"; do
+            t=$(grep -o 'tests="[0-9]*"'   "$f" | head -1 | grep -o '[0-9]*')
+            s=$(grep -o 'skipped="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            total=$((total + ${t:-0})); skipped=$((skipped + ${s:-0}))
+          done
+          echo "Browser tests: total=$total skipped=$skipped"
+          if [ "$total" -eq 0 ] || [ "$skipped" -eq "$total" ]; then
+            echo "::error::All browser tests were skipped — JCEF was not enabled (isSupported()==false). Check the JCEF flags."
+            exit 1
+          fi
 
       - name: Upload test results
         if: always()
