@@ -88,6 +88,12 @@ object TranscriptCodec {
 
     fun encodeDeltaJson(delta: TranscriptDelta): String = gson.toJson(delta)
 
+    /** Encode a string map (theme vars, labels) as base64(UTF-8(JSON)). */
+    fun encodeStringMap(map: Map<String, String>): String {
+        val json = gson.toJson(map)
+        return Base64.getEncoder().encodeToString(json.toByteArray(StandardCharsets.UTF_8))
+    }
+
     /** Parse an ack posted by the browser (best-effort; returns null on garbage). */
     fun decodeAck(raw: String): TranscriptAck? = try {
         gson.fromJson(raw, TranscriptAck::class.java)

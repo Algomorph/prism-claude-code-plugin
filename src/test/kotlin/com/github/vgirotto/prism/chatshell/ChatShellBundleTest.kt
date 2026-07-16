@@ -17,6 +17,7 @@ class ChatShellBundleTest {
         "chatshell.reconnecting", "chatshell.recovery.choose", "chatshell.recovery.retry",
         "chatshell.recovery.terminalOnly", "chatshell.expandTerminal", "chatshell.collapseTerminal",
         "chatshell.blockedImage", "chatshell.unsupported", "chatshell.showFull", "chatshell.copied",
+        "chatshell.disclosure.thinking", "chatshell.disclosure.output", "chatshell.disclosure.details",
     )
 
     private val control = object : ResourceBundle.Control() {
