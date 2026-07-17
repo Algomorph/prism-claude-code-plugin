@@ -25,7 +25,7 @@ class ChatShellBundleTest {
     }
 
     private fun assertBundleHasAllKeys(locale: Locale) {
-        val bundle = ResourceBundle.getBundle("messages.ClaudeBundle", locale, control)
+        val bundle = ResourceBundle.getBundle("messages.PrismBundle", locale, control)
         for (k in keys) {
             assertTrue(bundle.containsKey(k), "missing key '$k' in locale '$locale'")
             assertFalse(bundle.getString(k).isBlank(), "blank value for '$k' in locale '$locale'")
