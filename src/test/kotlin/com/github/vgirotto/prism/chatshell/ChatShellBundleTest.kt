@@ -15,7 +15,7 @@ class ChatShellBundleTest {
     private val keys = listOf(
         "chatshell.loading", "chatshell.noTranscript", "chatshell.unavailable",
         "chatshell.reconnecting", "chatshell.error", "chatshell.recovery.choose", "chatshell.recovery.retry",
-        "chatshell.recovery.terminalOnly", "chatshell.expandTerminal", "chatshell.collapseTerminal",
+        "chatshell.recovery.terminalOnly", "chatshell.showTranscript", "chatshell.hideTranscript",
         "chatshell.blockedImage", "chatshell.unsupported", "chatshell.showFull", "chatshell.copied",
         "chatshell.disclosure.thinking", "chatshell.disclosure.output", "chatshell.disclosure.details",
     )

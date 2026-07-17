@@ -13,79 +13,84 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * Composes the transcript pane above the existing `[toolbar + terminal]` strip
- * (design §6.4). The internal split is **always vertical** (transcript on top); the outer
- * splitter (terminal-vs-DiffPanel) keeps flipping by dock side, so nesting is safe.
+ * Composes an always-visible header row (command toolbar + a Show/Hide Transcript toggle,
+ * pinned upper-right like the IDE's show/hide changes-pane button) above a vertical split of
+ * the rendered transcript (top) over the terminal strip (bottom) — design §6.4.
  *
- * Min-row guard + mandatory expand (R11/R12): the terminal strip has a minimum height and
- * the splitter honors it, and an always-available "expand terminal" toggle drives the
- * strip to (near) full height so a long `AskUserQuestion` list is always reachable. The
- * guarantee is *never below the tested minimum, always expandable* — not "never clipped."
+ * The header lives **outside** the splitter so the toolbar and toggle stay reachable even
+ * when the transcript is collapsed. To ease adoption the transcript starts **hidden**
+ * (terminal expanded); the toggle reveals it, and the choice is persisted per project.
+ *
+ * Min-row guard (R11/R12): the terminal keeps a minimum height the splitter honors; hiding
+ * the transcript drives the split to give the terminal (near) all the space so a long
+ * `AskUserQuestion` list is always reachable.
  */
 class ChatShellPanel(
     project: Project,
     toolbar: JComponent,
-    transcriptComponent: JComponent,
+    private val transcriptComponent: JComponent,
     private val terminalComponent: JComponent,
 ) : JPanel(BorderLayout()) {
 
     private val props = PropertiesComponent.getInstance(project)
     private val splitter = JBSplitter(true, restoreProportion())
     private var savedProportion = splitter.proportion
-    private var expanded = false
+    private var transcriptVisible = props.getBoolean(VISIBLE_KEY, false)
 
-    private val expandButton = JButton(ClaudeBundle.message("chatshell.expandTerminal")).apply {
+    private val toggleButton = JButton().apply {
         isFocusable = true
-        toolTipText = ClaudeBundle.message("chatshell.expandTerminal")
-        accessibleContext.accessibleName = ClaudeBundle.message("chatshell.expandTerminal")
-        addActionListener { toggleExpand() }
+        addActionListener { setTranscriptVisible(!transcriptVisible) }
     }
 
     init {
-        // The command toolbar and the expand toggle share one row at the very top of the
-        // chat (just below the tabs): actions fill the width, the toggle is pinned right
-        // (design §6.4, HITL). The toolbar sits above the transcript so it is visible
-        // regardless of the splitter proportion, unlike its old spot atop the terminal.
         val toggleWrap = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), JBUI.scale(2))).apply {
-            add(expandButton)
+            add(toggleButton)
         }
         val header = JPanel(BorderLayout()).apply {
             add(toolbar, BorderLayout.CENTER)
             add(toggleWrap, BorderLayout.EAST)
         }
-        val transcriptWithHeader = JPanel(BorderLayout()).apply {
-            add(header, BorderLayout.NORTH)
-            add(transcriptComponent, BorderLayout.CENTER)
-        }
 
+        // minimumSize 0 lets a hidden transcript collapse fully at proportion 0f while the
+        // splitter still honors the terminal's minimum height.
+        transcriptComponent.minimumSize = Dimension(0, 0)
         terminalComponent.minimumSize = Dimension(0, JBUI.scale(MIN_TERMINAL_PX))
-        splitter.firstComponent = transcriptWithHeader
+        splitter.firstComponent = transcriptComponent
         splitter.secondComponent = terminalComponent
         splitter.dividerWidth = JBUI.scale(3)
         splitter.setHonorComponentsMinimumSize(true)
 
         splitter.addPropertyChangeListener(JBSplitter.PROP_PROPORTION) {
-            if (!expanded) {
+            // Persist the proportion only while the transcript is shown, so the collapsed
+            // 0f is never saved as the restore point.
+            if (transcriptVisible) {
                 savedProportion = splitter.proportion
                 props.setValue(PROPORTION_KEY, savedProportion.toString())
             }
         }
 
+        add(header, BorderLayout.NORTH)
         add(splitter, BorderLayout.CENTER)
+
+        applyVisibility()
     }
 
-    private fun toggleExpand() {
-        expanded = !expanded
-        if (expanded) {
-            savedProportion = splitter.proportion
-            splitter.proportion = EXPANDED_PROPORTION // transcript shrinks, terminal near-full
-            expandButton.text = ClaudeBundle.message("chatshell.collapseTerminal")
-            expandButton.accessibleContext.accessibleName = ClaudeBundle.message("chatshell.collapseTerminal")
-        } else {
-            splitter.proportion = savedProportion
-            expandButton.text = ClaudeBundle.message("chatshell.expandTerminal")
-            expandButton.accessibleContext.accessibleName = ClaudeBundle.message("chatshell.expandTerminal")
-        }
+    private fun setTranscriptVisible(visible: Boolean) {
+        if (visible == transcriptVisible) return
+        if (!visible) savedProportion = splitter.proportion.coerceIn(0.1f, 0.9f)
+        transcriptVisible = visible
+        props.setValue(VISIBLE_KEY, visible)
+        applyVisibility()
+    }
+
+    private fun applyVisibility() {
+        splitter.proportion = if (transcriptVisible) savedProportion else 0.0f
+        val label = ClaudeBundle.message(
+            if (transcriptVisible) "chatshell.hideTranscript" else "chatshell.showTranscript"
+        )
+        toggleButton.text = label
+        toggleButton.toolTipText = label
+        toggleButton.accessibleContext.accessibleName = label
     }
 
     private fun restoreProportion(): Float =
@@ -93,8 +98,8 @@ class ChatShellPanel(
 
     companion object {
         private const val PROPORTION_KEY = "prism.chatshell.proportion"
+        private const val VISIBLE_KEY = "prism.chatshell.transcriptVisible"
         private const val DEFAULT_PROPORTION = 0.5f
-        private const val EXPANDED_PROPORTION = 0.04f
         /** Minimum terminal strip height in unscaled px (~10 rows). Tuned in HITL. */
         private const val MIN_TERMINAL_PX = 180
     }
