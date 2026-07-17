@@ -55,6 +55,16 @@ class TranscriptParser {
         val id = json.get("uuid")?.asString ?: "synthetic-$index"
         val ts = json.get("timestamp")?.asString
 
+        // Meta records (caveats, image-paste notes) and the post-compaction continuation
+        // summary ("This session is being continued…") are plumbing, not conversation — Claude
+        // always writes them as `type:"user"`, so left alone they render under "You". A
+        // `compact_boundary` system record already precedes every summary and renders the
+        // "Conversation compacted" divider, so both are retained-but-hidden here rather than
+        // shown. (Retained, not dropped, per R7.)
+        val isMeta = json.get("isMeta")?.asBooleanSafe() == true
+        val isCompactSummary = json.get("isCompactSummary")?.asBooleanSafe() == true
+        if (type == "user" && (isMeta || isCompactSummary)) return internalMessage(id, type, ts, line)
+
         return when (type) {
             "user" -> TranscriptMessage(id, "user", ts, null, userBlocks(json))
             "assistant" -> {
@@ -83,7 +93,7 @@ class TranscriptParser {
     private fun userBlocks(record: JsonObject): List<Block> {
         val content = record.getAsJsonObject("message")?.get("content") ?: return emptyList()
         if (content.isJsonPrimitive) {
-            return listOf(TextBlock(content.asString))
+            return cleanUserStringContent(content.asString)
         }
         if (!content.isJsonArray) return emptyList()
         val blocks = ArrayList<Block>()
@@ -106,10 +116,29 @@ class TranscriptParser {
         return blocks
     }
 
+    /**
+     * Cleans a plain-string user message. A slash-command invocation renders as a compact
+     * command chip (`/compact`); CLI plumbing wrappers (local-command output/caveats, system
+     * reminders, IDE file notices) are dropped so they never appear under "You"; anything else
+     * is kept with ANSI escape sequences stripped (terminal echo like `[2m…` otherwise
+     * surfaces as literal `¤[2m` garbage).
+     */
+    private fun cleanUserStringContent(raw: String): List<Block> {
+        val text = raw.trim()
+        extractTag(text, "command-name")?.let { name ->
+            val args = extractTag(text, "command-args")?.trim().orEmpty()
+            val label = if (args.isEmpty()) name.trim() else "${name.trim()} $args"
+            return if (label.isBlank()) emptyList() else listOf(TextBlock(label))
+        }
+        if (PLUMBING_TAGS.any { text.startsWith("<$it") }) return emptyList()
+        val cleaned = stripAnsi(raw).trim()
+        return if (cleaned.isEmpty()) emptyList() else listOf(TextBlock(cleaned))
+    }
+
     /** Turn one content-array element into zero or more blocks. */
     private fun contentBlock(obj: JsonObject): List<Block> {
         return when (obj.get("type")?.asString) {
-            "text" -> listOf(TextBlock(obj.get("text")?.asStringSafe() ?: ""))
+            "text" -> listOf(TextBlock(stripAnsi(obj.get("text")?.asStringSafe() ?: "")))
             // Redacted thinking arrives as `{"thinking":"","signature":"…"}` — the reasoning
             // text is encrypted server-side and never persisted, so there is nothing to show.
             // Emit no block rather than an empty "Thinking" disclosure that expands to nothing.
@@ -138,7 +167,7 @@ class TranscriptParser {
             return listOf(ToolResultBlock(toolUseId, "", isError))
         }
         if (content.isJsonPrimitive) {
-            val full = content.asString
+            val full = stripAnsi(content.asString)
             return listOf(ToolResultBlock(toolUseId, cap(full), isError, truncated = full.length > displayCap))
         }
         if (content.isJsonArray) {
@@ -148,7 +177,7 @@ class TranscriptParser {
                 if (!el.isJsonObject) continue
                 val part = el.asJsonObject
                 when (part.get("type")?.asString) {
-                    "text" -> sb.appendLine(part.get("text")?.asStringSafe() ?: "")
+                    "text" -> sb.appendLine(stripAnsi(part.get("text")?.asStringSafe() ?: ""))
                     "image" -> extra.add(imageBlock(part))
                     "tool_reference" -> extra.add(ToolReferenceBlock(part.get("tool_name")?.asString ?: "tool"))
                     else -> extra.add(UnknownBlock(part.get("type")?.asString ?: "unknown", compact.toJson(part)))
@@ -179,4 +208,28 @@ class TranscriptParser {
 
     private fun JsonElement.asStringSafe(): String? = try { asString } catch (_: Exception) { null }
     private fun JsonElement.asBooleanSafe(): Boolean? = try { asBoolean } catch (_: Exception) { null }
+
+    private fun extractTag(text: String, tag: String): String? =
+        Regex("<$tag>(.*?)</$tag>", RegexOption.DOT_MATCHES_ALL).find(text)?.groupValues?.get(1)
+
+    companion object {
+        /**
+         * CLI plumbing wrappers Claude persists as `type:"user"` records. They are terminal
+         * echo / injected notices, not conversation, so they never render in the transcript.
+         * (`command-name`/`command-args` are handled separately as a command chip.)
+         */
+        private val PLUMBING_TAGS = listOf(
+            "local-command-stdout", "local-command-caveat", "command-message",
+            "system-reminder", "ide_opened_file",
+        )
+
+        /**
+         * Matches an ANSI CSI escape sequence (ECMA-48): ESC `[`, parameter bytes, intermediate
+         * bytes, final byte — covers the SGR color/style codes (`[2m`, `[22m`, …)
+         * that leak into `local-command-stdout` and would otherwise show as literal `¤[2m`.
+         */
+        private val ANSI_CSI = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
+
+        fun stripAnsi(s: String): String = ANSI_CSI.replace(s, "")
+    }
 }
