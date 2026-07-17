@@ -411,7 +411,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     // Resolve runtime support off the EDT (the capability probe can block for
                     // seconds) so the transcript can render an explicit "unavailable" state
                     // rather than a permanent empty pane when this CLI lacks --session-id (#4).
-                    val deterministicSupported = try { pm.isDeterministicSessionSupported() } catch (_: Exception) { true }
+                    // Only meaningful for Claude — Codex resolves its rollout a different way, so
+                    // don't spawn the claude probe for a Codex session.
+                    val deterministicSupported = cli == AgentCli.CLAUDE &&
+                        try { pm.isDeterministicSessionSupported() } catch (_: Exception) { true }
 
                     ApplicationManager.getApplication().invokeLater {
                         try {
