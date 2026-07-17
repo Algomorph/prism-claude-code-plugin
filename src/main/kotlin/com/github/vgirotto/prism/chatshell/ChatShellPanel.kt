@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.chatshell
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
+import com.github.vgirotto.prism.i18n.PrismBundle
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBSplitter
@@ -85,7 +85,7 @@ class ChatShellPanel(
 
     private fun applyVisibility() {
         splitter.proportion = if (transcriptVisible) savedProportion else 0.0f
-        val label = ClaudeBundle.message(
+        val label = PrismBundle.message(
             if (transcriptVisible) "chatshell.hideTranscript" else "chatshell.showTranscript"
         )
         toggleButton.text = label

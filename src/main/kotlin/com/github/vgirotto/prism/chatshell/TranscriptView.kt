@@ -203,9 +203,9 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
     }
 
     private fun disclosureLabels(): Map<String, String> = mapOf(
-        "thinking" to com.github.vgirotto.prism.i18n.ClaudeBundle.message("chatshell.disclosure.thinking"),
-        "output" to com.github.vgirotto.prism.i18n.ClaudeBundle.message("chatshell.disclosure.output"),
-        "details" to com.github.vgirotto.prism.i18n.ClaudeBundle.message("chatshell.disclosure.details"),
+        "thinking" to com.github.vgirotto.prism.i18n.PrismBundle.message("chatshell.disclosure.thinking"),
+        "output" to com.github.vgirotto.prism.i18n.PrismBundle.message("chatshell.disclosure.output"),
+        "details" to com.github.vgirotto.prism.i18n.PrismBundle.message("chatshell.disclosure.details"),
     )
 
     fun setFallbackText(text: String) {
@@ -218,7 +218,7 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
     }
 
     private fun statusFor(s: State): String? {
-        fun m(key: String) = com.github.vgirotto.prism.i18n.ClaudeBundle.message(key)
+        fun m(key: String) = com.github.vgirotto.prism.i18n.PrismBundle.message(key)
         return when (s) {
             State.LOADING -> m("chatshell.loading")
             State.NO_TRANSCRIPT_YET -> m("chatshell.noTranscript")
