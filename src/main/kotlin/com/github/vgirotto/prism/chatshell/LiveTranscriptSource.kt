@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  */
 class LiveTranscriptSource(
     private val file: File,
-    private val parser: TranscriptParser = TranscriptParser(),
+    private val parser: AgentTranscriptParser = TranscriptParser(),
     private val windowSize: Int = 50,
     private val pollIntervalMs: Long = 250,
 ) : TranscriptSource {
