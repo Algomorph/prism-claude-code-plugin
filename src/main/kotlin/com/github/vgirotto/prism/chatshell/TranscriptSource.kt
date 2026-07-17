@@ -51,7 +51,7 @@ interface TranscriptSource {
  */
 class StaticTranscriptSource(
     private val file: File?,
-    private val parser: TranscriptParser = TranscriptParser(),
+    private val parser: AgentTranscriptParser = TranscriptParser(),
     private val windowSize: Int = 50,
 ) : TranscriptSource {
 

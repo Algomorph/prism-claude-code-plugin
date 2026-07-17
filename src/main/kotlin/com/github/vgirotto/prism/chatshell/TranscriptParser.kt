@@ -17,7 +17,7 @@ import java.io.File
  * Agent-specific: this is the Claude implementation. Codex gets its own parser behind the
  * same seam (§11).
  */
-class TranscriptParser {
+class TranscriptParser : AgentTranscriptParser {
 
     private val pretty: Gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
     private val compact: Gson = Gson()
@@ -25,14 +25,14 @@ class TranscriptParser {
     /** Cap on tool-result / tool-input text kept in memory for display (R14, §6.3). */
     private val displayCap = 8000
 
-    fun parseFile(file: File): List<TranscriptMessage> {
+    override fun parseFile(file: File): List<TranscriptMessage> {
         if (!file.isFile) return emptyList()
         // useLines tolerates a partial trailing line by simply yielding it; a non-JSON
         // line is skipped by parseLine. Group 5 adds byte-offset buffering for live tails.
         return file.useLines { seq -> parseLines(seq) }
     }
 
-    fun parseLines(lines: Sequence<String>): List<TranscriptMessage> {
+    override fun parseLines(lines: Sequence<String>): List<TranscriptMessage> {
         val out = ArrayList<TranscriptMessage>()
         var index = 0
         for (raw in lines) {

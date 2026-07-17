@@ -430,11 +430,21 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                                 transcriptView.initialize(
                                     com.github.vgirotto.prism.chatshell.ChatShellTheme.currentVars()
                                 )
-                                if (deterministicSupported) {
-                                    if (!attached) { attached = true; transcriptController.attachLive(convId) }
-                                    transcriptController.resume()
-                                } else {
-                                    transcriptView.setState(
+                                when {
+                                    // Codex has no caller-supplied session id; the controller
+                                    // resolves its rollout file by cwd + recency and tails it
+                                    // with the Codex parser (design §11).
+                                    cli == AgentCli.CODEX -> {
+                                        if (!attached) { attached = true; transcriptController.attachLiveCodex() }
+                                        transcriptController.resume()
+                                    }
+                                    // Claude with --session-id: the transcript file is <id>.jsonl.
+                                    deterministicSupported -> {
+                                        if (!attached) { attached = true; transcriptController.attachLive(convId) }
+                                        transcriptController.resume()
+                                    }
+                                    // Claude without --session-id: no deterministic file to tail.
+                                    else -> transcriptView.setState(
                                         com.github.vgirotto.prism.chatshell.TranscriptView.State.UNAVAILABLE
                                     )
                                 }

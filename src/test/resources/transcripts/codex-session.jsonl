@@ -1,0 +1,13 @@
+{"timestamp": "2026-07-17T14:29:58.186Z", "type": "session_meta", "payload": {"id": "019f7075-abcd", "session_id": "019f7075-abcd", "cwd": "/home/dev/proj", "originator": "codex-tui", "cli_version": "0.144.5"}}
+{"timestamp": "2026-07-17T14:29:58.190Z", "type": "turn_context", "payload": {"model": "gpt-5", "effort": "high", "cwd": "/home/dev/proj"}}
+{"timestamp": "2026-07-17T14:29:58.195Z", "type": "response_item", "payload": {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "<permissions instructions> Filesystem sandboxing ..."}]}}
+{"timestamp": "2026-07-17T14:29:58.220Z", "type": "event_msg", "payload": {"type": "user_message", "message": "hello codex"}}
+{"timestamp": "2026-07-17T14:29:58.221Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md instructions\n<INSTRUCTIONS>\nhello codex"}]}}
+{"timestamp": "2026-07-17T14:30:03.396Z", "type": "response_item", "payload": {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAAAABopaque"}}
+{"timestamp": "2026-07-17T14:30:08.457Z", "type": "response_item", "payload": {"type": "custom_tool_call", "id": "ctc_1", "status": "completed", "call_id": "call_1", "name": "exec", "input": "ls -la"}}
+{"timestamp": "2026-07-17T14:30:08.788Z", "type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "call_1", "output": [{"type": "input_text", "text": "\u001b[2mfile1.txt\u001b[22m\nfile2.txt\n"}]}}
+{"timestamp": "2026-07-17T14:30:20.100Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Here is the answer."}]}}
+{"timestamp": "2026-07-17T14:30:20.101Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Here is the answer."}}
+{"timestamp": "2026-07-17T14:30:20.102Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total": 123}}}
+{"timestamp": "2026-07-17T14:30:25.000Z", "type": "response_item", "payload": {"type": "reasoning", "id": "rs_2", "summary": [{"type": "summary_text", "text": "Thinking about it."}]}}
+{"timestamp": "2026-07-17T14:31:00.000Z", "type": "compacted", "payload": {"message": "", "replacement_history": []}}

@@ -5,7 +5,10 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.File
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * Ties a [TranscriptSource] to the [TranscriptView] via [TranscriptPayloadBuilder]
@@ -45,6 +48,11 @@ class TranscriptController(
     /** The conversation the transcript is currently bound to (mutable across `/resume`, R2). */
     @Volatile private var boundConvId: String? = null
     @Volatile private var siblingWatcher: SiblingTranscriptWatcher? = null
+
+    // Codex rollout binding (design §11): the path is discovered, not deterministic, so a
+    // background poller resolves the newest matching rollout and (re)binds when it changes.
+    @Volatile private var codexPoller: ScheduledFuture<*>? = null
+    @Volatile private var boundFilePath: String? = null
 
     init {
         // Render-failure recovery (review #9): if a delta errors or times out in the view,
@@ -106,6 +114,44 @@ class TranscriptController(
         ).start()
         siblingWatcher = watcher
         Disposer.register(this, watcher)
+    }
+
+    /**
+     * Attach a live tailing source for the current project's Codex session (design §11). Codex
+     * supplies no session id, so we poll for the newest rollout file whose `cwd` matches the
+     * project and bind to it; the same poll rebinds when a newer rollout appears (new session or
+     * a native resume). Uses the [CodexTranscriptParser] rather than the Claude schema.
+     */
+    fun attachLiveCodex() {
+        if (disposed || codexPoller != null) return
+        val codexResolver = CodexSessionResolver(project.basePath)
+        codexPoller = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            {
+                try {
+                    if (disposed) return@scheduleWithFixedDelay
+                    val newest = codexResolver.newestForProject() ?: return@scheduleWithFixedDelay
+                    if (newest.absolutePath != boundFilePath) {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (!disposed) bindCodexFile(newest)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Resolution is best-effort; a transient FS error just retries next tick.
+                }
+            },
+            0, 500, TimeUnit.MILLISECONDS
+        )
+    }
+
+    /** (Re)bind the live source to a resolved Codex rollout file as a fresh stream. */
+    private fun bindCodexFile(file: File) {
+        if (disposed || file.absolutePath == boundFilePath) return
+        log.info("Transcript binding to Codex rollout ${file.name}")
+        boundFilePath = file.absolutePath
+        subscription?.dispose()
+        mirror.clear(); mirrorIndex.clear()
+        sourceEpoch = -1L
+        subscription = LiveTranscriptSource(file, CodexTranscriptParser()).subscribe { state -> onState(state) }
     }
 
     /** One-shot static render (Group 4 behavior; used where live tailing isn't wanted). */
@@ -177,6 +223,8 @@ class TranscriptController(
 
     override fun dispose() {
         disposed = true
+        codexPoller?.cancel(false)
+        codexPoller = null
         subscription?.dispose()
         subscription = null
     }
