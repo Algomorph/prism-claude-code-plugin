@@ -77,6 +77,11 @@ class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("setting
                 checkBox(PrismBundle.message("settings.show.changes"))
                     .bindSelected(settings::showChangesOnStartup)
             }
+            row {
+                checkBox(PrismBundle.message("settings.transcript.inEditor"))
+                    .bindSelected(settings::showTranscriptInEditor)
+                    .comment(PrismBundle.message("settings.transcript.inEditor.comment"))
+            }
         }
 
         group(PrismBundle.message("settings.group.language")) {

@@ -16,6 +16,8 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -26,9 +28,11 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.terminal.JBTerminalSystemSettingsProviderBase
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.ui.JBSplitter
+import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
 import java.awt.BorderLayout
@@ -57,6 +61,13 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
         val DIFF_PANEL_KEY = Key.create<DiffPanel>("AgentDiffPanel")
         val SESSION_DISPOSABLE_KEY = Key.create<com.intellij.openapi.Disposable>("AgentSessionDisposable")
+
+        /** transcript-in-editor mode: the tab's transcript editor file and its chat panel,
+         *  so the toggle button and the editor tab's × can stay in sync. */
+        val TRANSCRIPT_FILE_KEY =
+            Key.create<com.github.vgirotto.prism.chatshell.TranscriptVirtualFile>("PrismTranscriptFile")
+        val CHAT_PANEL_KEY =
+            Key.create<com.github.vgirotto.prism.chatshell.ChatShellPanel>("PrismChatShellPanel")
 
         private var sessionCounter = 0
 
@@ -129,6 +140,20 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 event.content.getUserData(DIFF_PANEL_KEY)?.refreshDiff()
             }
         })
+
+        // Editor-hosted transcript: when the user closes a transcript tab with its ×, flip the
+        // matching chat's toggle back to "Show Transcript" (× == hide transcript, per session).
+        project.messageBus.connect(toolWindow.disposable).subscribe(
+            FileEditorManagerListener.FILE_EDITOR_MANAGER,
+            object : FileEditorManagerListener {
+                override fun fileClosed(source: FileEditorManager, file: VirtualFile) {
+                    if (file !is com.github.vgirotto.prism.chatshell.TranscriptVirtualFile) return
+                    findContentBySessionId(toolWindow, file.sessionId)
+                        ?.getUserData(CHAT_PANEL_KEY)
+                        ?.setTranscriptVisibleExternally(false)
+                }
+            }
+        )
 
         // Idle listener: compute one new diff off the UI thread, then show it on all DiffPanels.
         AgentProcessManager.getInstance(project).addIdleListener {
@@ -317,17 +342,42 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 add(terminalWidget.component, BorderLayout.CENTER)
             }
 
-            // Hybrid chat shell: rendered transcript (with the command toolbar in its header)
-            // above the terminal strip. The browser is created lazily on first tab-select (R20).
-            val transcriptView = com.github.vgirotto.prism.chatshell.TranscriptView(disposable)
-            transcriptView.onOpenLink = { href ->
-                try { com.intellij.ide.BrowserUtil.browse(href) } catch (_: Exception) {}
+            // Transcript hosting. Default (transcript-in-editor): the transcript is a separate
+            // IDE editor tab whose FileEditor owns its own view/controller, so here we build only
+            // the header+terminal and let the toggle open/close that tab. Alternative (split):
+            // the transcript renders in this pane above the terminal, as before. The browser is
+            // created lazily on first tab-select (R20).
+            //
+            // Editor hosting keys the tab's virtual file on a session id, which only Claude
+            // (--session-id) supplies, so it is gated to Claude. Codex always uses split mode:
+            // its rollout is resolved by cwd + recency (design §11), not by a caller-side id.
+            val inEditor = AgentSettingsState.getInstance().showTranscriptInEditor && cli == AgentCli.CLAUDE
+            val contentHolder = arrayOfNulls<Content>(1)
+
+            val transcriptView: com.github.vgirotto.prism.chatshell.TranscriptView?
+            val transcriptController: com.github.vgirotto.prism.chatshell.TranscriptController?
+            val chatShellPanel: com.github.vgirotto.prism.chatshell.ChatShellPanel
+
+            if (inEditor) {
+                transcriptView = null
+                transcriptController = null
+                chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
+                    project, toolbar, null, terminalPanel, editorMode = true,
+                    onEditorToggle = { toggleTranscriptEditor(project, contentHolder[0]) }
+                )
+            } else {
+                val tv = com.github.vgirotto.prism.chatshell.TranscriptView(disposable)
+                tv.onOpenLink = { href ->
+                    try { com.intellij.ide.BrowserUtil.browse(href) } catch (_: Exception) {}
+                }
+                val tc = com.github.vgirotto.prism.chatshell.TranscriptController(project, tv)
+                Disposer.register(disposable, tc)
+                transcriptView = tv
+                transcriptController = tc
+                chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
+                    project, toolbar, tv.component, terminalPanel
+                )
             }
-            val transcriptController = com.github.vgirotto.prism.chatshell.TranscriptController(project, transcriptView)
-            Disposer.register(disposable, transcriptController)
-            val chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
-                project, toolbar, transcriptView.component, terminalPanel
-            )
 
             // Each tab gets its own DiffPanel (no parent-sharing issues)
             val diffPanel = DiffPanel(project) {
@@ -370,6 +420,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             content.isCloseable = true
             content.putUserData(DIFF_PANEL_KEY, diffPanel)
             content.putUserData(SESSION_DISPOSABLE_KEY, disposable)
+            content.putUserData(CHAT_PANEL_KEY, chatShellPanel)
+            contentHolder[0] = content
 
             // The session lives and dies with the tab, and only tab *disposal* means the
             // tab is gone. Reordering tabs by dragging one removes its Content with
@@ -384,6 +436,16 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 content.getUserData(SESSION_ID_KEY)?.let { sessionId ->
                     AgentProcessManager.getInstance(project).destroySession(sessionId)
                 }
+                // Editor-hosted transcript: close its tab when the session tab goes away, so no
+                // orphaned transcript editor outlives the chat that fed it. Tied to disposal for
+                // the same reason as the session — on a drag-reorder the transcript editor has to
+                // stay open, since the chat feeding it is only moving, not closing.
+                content.getUserData(TRANSCRIPT_FILE_KEY)?.let { file ->
+                    val fem = FileEditorManager.getInstance(project)
+                    if (fem.isFileOpen(file)) fem.closeFile(file)
+                }
+                // Releases the tab's own resources (JCEF browser, transcript poller, controller,
+                // selection listener) instead of leaking them until the whole tool window closes.
                 Disposer.dispose(disposable)
             }
 
@@ -422,54 +484,78 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             terminalWidget.start()
                             log.info("Agent session started: $sessionName [${result.sessionId}]")
 
-                            // Lazily initialize the transcript browser + attach the live tail
-                            // when this tab is (or becomes) selected (R20). The conversation id
-                            // equals the session id when --session-id is supported (Claude);
-                            // otherwise the pane shows an explicit "unavailable" state (e.g. a
-                            // Codex session until its transcript wiring lands).
+                            // The conversation id equals the session id when --session-id is
+                            // supported (Claude); otherwise there is no deterministic transcript
+                            // file (a Claude version without --session-id). Codex never reaches
+                            // editor mode (gated above) and tails its rollout in split mode.
                             val convId = result.sessionId
-                            var attached = false
-                            val ensureAttached = {
-                                transcriptView.initialize(
-                                    com.github.vgirotto.prism.chatshell.ChatShellTheme.currentVars()
-                                )
-                                when {
-                                    // Codex has no caller-supplied session id; the controller
-                                    // resolves its rollout file by cwd + recency and tails it
-                                    // with the Codex parser (design §11).
-                                    cli == AgentCli.CODEX -> {
-                                        if (!attached) { attached = true; transcriptController.attachLiveCodex() }
-                                        transcriptController.resume()
-                                    }
-                                    // Claude with --session-id: the transcript file is <id>.jsonl.
-                                    deterministicSupported -> {
-                                        if (!attached) { attached = true; transcriptController.attachLive(convId) }
-                                        transcriptController.resume()
-                                    }
-                                    // Claude without --session-id: no deterministic file to tail.
-                                    else -> transcriptView.setState(
-                                        com.github.vgirotto.prism.chatshell.TranscriptView.State.UNAVAILABLE
+
+                            if (inEditor) {
+                                // transcript-in-editor: prepare the tab's virtual file; the toggle
+                                // (or a later show) opens it. The FileEditor builds its own browser
+                                // + tail, so nothing renders until the user shows it (R20). When the
+                                // CLI can't render a transcript, disable the toggle rather than open
+                                // an empty tab.
+                                if (deterministicSupported) {
+                                    content.putUserData(
+                                        TRANSCRIPT_FILE_KEY,
+                                        com.github.vgirotto.prism.chatshell.TranscriptVirtualFile(
+                                            result.sessionId, convId, sessionName
+                                        )
+                                    )
+                                } else {
+                                    chatShellPanel.setToggleEnabled(
+                                        false, PrismBundle.message("chatshell.unavailable")
                                     )
                                 }
-                            }
-                            if (toolWindow.contentManager.selectedContent === content) {
-                                ensureAttached()
-                            }
-                            // Lazy init + background-tab batching: resume rendering when this
-                            // tab is selected, pause (coalesce deltas) when another is (R20).
-                            // Registered for removal with the tab disposable so it does not
-                            // accumulate on the shared content manager (review #6).
-                            val selectionListener = object : ContentManagerListener {
-                                override fun selectionChanged(event: ContentManagerEvent) {
-                                    if (event.content !== content) return
-                                    if (event.operation == ContentManagerEvent.ContentOperation.add) ensureAttached()
-                                    else transcriptController.pause()
+                            } else {
+                                // Split mode: lazily initialize the in-pane transcript browser +
+                                // attach the live tail when this tab is (or becomes) selected (R20).
+                                val view = transcriptView!!
+                                val controller = transcriptController!!
+                                var attached = false
+                                val ensureAttached = {
+                                    view.initialize(
+                                        com.github.vgirotto.prism.chatshell.ChatShellTheme.currentVars()
+                                    )
+                                    when {
+                                        // Codex has no caller-supplied session id; the controller
+                                        // resolves its rollout file by cwd + recency and tails it
+                                        // with the Codex parser (design §11).
+                                        cli == AgentCli.CODEX -> {
+                                            if (!attached) { attached = true; controller.attachLiveCodex() }
+                                            controller.resume()
+                                        }
+                                        // Claude with --session-id: the transcript file is <id>.jsonl.
+                                        deterministicSupported -> {
+                                            if (!attached) { attached = true; controller.attachLive(convId) }
+                                            controller.resume()
+                                        }
+                                        // Claude without --session-id: no deterministic file to tail.
+                                        else -> view.setState(
+                                            com.github.vgirotto.prism.chatshell.TranscriptView.State.UNAVAILABLE
+                                        )
+                                    }
                                 }
+                                if (toolWindow.contentManager.selectedContent === content) {
+                                    ensureAttached()
+                                }
+                                // Lazy init + background-tab batching: resume rendering when this
+                                // tab is selected, pause (coalesce deltas) when another is (R20).
+                                // Registered for removal with the tab disposable so it does not
+                                // accumulate on the shared content manager (review #6).
+                                val selectionListener = object : ContentManagerListener {
+                                    override fun selectionChanged(event: ContentManagerEvent) {
+                                        if (event.content !== content) return
+                                        if (event.operation == ContentManagerEvent.ContentOperation.add) ensureAttached()
+                                        else controller.pause()
+                                    }
+                                }
+                                toolWindow.contentManager.addContentManagerListener(selectionListener)
+                                Disposer.register(disposable, com.intellij.openapi.Disposable {
+                                    toolWindow.contentManager.removeContentManagerListener(selectionListener)
+                                })
                             }
-                            toolWindow.contentManager.addContentManagerListener(selectionListener)
-                            Disposer.register(disposable, com.intellij.openapi.Disposable {
-                                toolWindow.contentManager.removeContentManagerListener(selectionListener)
-                            })
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
                             notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))
@@ -484,6 +570,30 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             log.error("Failed to create agent terminal widget", e)
             showFallbackContent(project, toolWindow, e.message ?: "Unknown error")
         }
+    }
+
+    /**
+     * transcript-in-editor toggle: open the chat's transcript editor tab if closed, or close it
+     * if already open (closing routes through [FileEditorManagerListener.fileClosed], which flips
+     * the toggle label). Opens without stealing focus so the terminal keeps the caret.
+     */
+    private fun toggleTranscriptEditor(project: Project, content: Content?) {
+        val file = content?.getUserData(TRANSCRIPT_FILE_KEY) ?: return
+        val fem = FileEditorManager.getInstance(project)
+        if (fem.isFileOpen(file)) {
+            fem.closeFile(file)
+        } else {
+            fem.openFile(file, false)
+            content.getUserData(CHAT_PANEL_KEY)?.setTranscriptVisibleExternally(true)
+        }
+    }
+
+    private fun findContentBySessionId(toolWindow: ToolWindow, sessionId: String): Content? {
+        for (i in 0 until toolWindow.contentManager.contentCount) {
+            val c = toolWindow.contentManager.getContent(i) ?: continue
+            if (c.getUserData(SESSION_ID_KEY) == sessionId) return c
+        }
+        return null
     }
 
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {

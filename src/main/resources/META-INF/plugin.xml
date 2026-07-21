@@ -129,6 +129,10 @@
                     factoryClass="com.github.vgirotto.prism.toolwindow.AgentToolWindowFactory"
                     icon="/icons/prism.svg"/>
 
+        <!-- Transcript editor tab (transcript-in-editor mode) -->
+        <fileEditorProvider
+            implementation="com.github.vgirotto.prism.chatshell.TranscriptFileEditorProvider"/>
+
         <!-- Settings -->
         <projectConfigurable
             parentId="tools"

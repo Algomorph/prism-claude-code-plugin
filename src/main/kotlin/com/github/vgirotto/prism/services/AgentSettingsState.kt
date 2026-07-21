@@ -22,6 +22,7 @@ class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
         var shellPath: String = System.getenv("SHELL") ?: "/bin/zsh",
         var showChangesOnStartup: Boolean = true,
         var showStatusBarWidget: Boolean = true,
+        var showTranscriptInEditor: Boolean = true,
         var excludedPatterns: String = ".git,node_modules,build,out,.gradle,.idea,target,dist,.next,__pycache__,.venv,vendor,.intellijPlatform,.DS_Store,.cls,.cache",
         var maxFileSizeKb: Int = 512,
         var language: String = "en",
@@ -67,6 +68,15 @@ class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
     var showStatusBarWidget: Boolean
         get() = state.showStatusBarWidget
         set(value) { state.showStatusBarWidget = value }
+
+    /**
+     * When true (default) the rendered transcript opens as a tab in the IDE's editor area;
+     * when false it splits the Prism tool-window pane (transcript over terminal). See
+     * ChatShellPanel / AgentToolWindowFactory.
+     */
+    var showTranscriptInEditor: Boolean
+        get() = state.showTranscriptInEditor
+        set(value) { state.showTranscriptInEditor = value }
 
     var excludedPatterns: String
         get() = state.excludedPatterns
