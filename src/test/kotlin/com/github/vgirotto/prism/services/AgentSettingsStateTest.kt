@@ -17,6 +17,7 @@ class AgentSettingsStateTest {
         assertNotNull(state.shellPath)
         assertTrue(state.showChangesOnStartup)
         assertTrue(state.showStatusBarWidget)
+        assertTrue(state.showTranscriptInEditor, "transcript-in-editor is the default hosting mode")
         assertTrue(state.excludedPatterns.contains(".git"))
         assertEquals(512, state.maxFileSizeKb)
     }
