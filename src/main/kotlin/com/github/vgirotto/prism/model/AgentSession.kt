@@ -76,6 +76,15 @@ class AgentSession(
         pendingSequences.updateAndGet { if (it > 0) it - 1 else 0 }
     }
 
+    /**
+     * Set when a `/resume` is initiated from Prism (the toolbar Resume button) so a transcript
+     * opened for this chat can show a "syncing on next message" hint. Prism cannot attribute the
+     * resumed conversation to this chat until its first post-resume turn (the transcript file
+     * carries no per-chat id before then), so this bridges that window. Cleared once the
+     * transcript rebinds to the resumed conversation or the hint times out.
+     */
+    @Volatile var resumePending: Boolean = false
+
     enum class SessionState { STOPPED, STARTING, IDLE, WORKING }
 
     val isAlive: Boolean get() = process?.isAlive == true

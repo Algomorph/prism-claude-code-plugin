@@ -402,7 +402,13 @@ private class ResumeAction(private val project: Project) : AnAction(
     PrismBundle.message("toolbar.resume"), PrismBundle.message("toolbar.resume.desc"), AllIcons.Actions.Resume
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
-        sendIfAccepted(project) { sendText("/resume\r") }
+        sendIfAccepted(project) {
+            sendText("/resume\r")
+            // Let the active chat's transcript show a "syncing on next message" hint: the resumed
+            // conversation isn't attributable to this chat until its first post-resume turn. Inside
+            // the gate on purpose — a duplicate click that never sends must not raise the hint.
+            notifyResumeInitiated()
+        }
     }
     override fun update(e: AnActionEvent) = e.gateToolbarItem(project, ToolbarItem.RESUME)
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
