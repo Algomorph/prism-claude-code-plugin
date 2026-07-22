@@ -3,39 +3,47 @@ package com.github.vgirotto.prism.chatshell
 import com.intellij.openapi.Disposable
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * Detects an in-terminal `/resume` (or the toolbar Resume button, which just types `/resume`
- * — see design §9, R2) so the transcript can rebind to the conversation the user switched to.
+ * Follows an in-terminal `/resume` (or the toolbar Resume button, which just types `/resume`
+ * — design §9, R2) so the transcript can rebind to the conversation the user switched to.
  *
- * Prism never sees the CLI's interactive picker choice, so this is a **filesystem heuristic**,
- * not a hard signal: when a sibling `<id>.jsonl` in the project dir starts *actively growing*
- * and overtakes our bound file, that sibling is the resumed conversation.
+ * ## Hard signal, not a guess
  *
- * To avoid a spurious rebind at startup (the dir is full of old conversations, and every
- * Prism tab is itself a live Claude session writing here), a sibling only qualifies once it
- * has grown **since we began watching** — a baseline of mtimes is snapshotted on the first
- * poll and after each rebind, and a file counts as "active" only if it is new or its mtime
- * has advanced past that baseline. Pre-existing idle conversations never trigger a switch.
+ * A chat is launched with `--session-id <launchSessionId>`, and *every* real content line
+ * Claude writes carries that id in a snake-case `"session_id"` field — even after a `/resume`,
+ * when the lines are appended to a *different* conversation file:
  *
- * Known limitation (accepted, §9): if two visible tabs race a `/resume` within one poll
- * window, or another Claude session in the same project writes concurrently, the wrong
- * sibling can win. Only the *selected* tab watches ([isActive]), which removes the common
- * case; the residual race is left for a later hard-signal fix.
+ * ```
+ * // fresh chat, file <S>.jsonl:      "sessionId":"<S>", "session_id":"<S>"
+ * // after /resume into <Y>, file <Y>.jsonl: "sessionId":"<Y>", "session_id":"<S>"
+ * ```
+ *
+ * So the conversation a chat is *currently* writing to is simply the `.jsonl` whose most
+ * recent `session_id`-bearing line equals our [launchSessionId]. That makes rebind
+ * **deterministic and per-chat**: chat A only ever matches its own unique launch id, so a
+ * concurrent chat B writing (or resuming) in the same project dir can never hijack A's
+ * transcript — the cross-talk the old mtime-overtake heuristic allowed is now structurally
+ * impossible.
+ *
+ * Note the resumed conversation's file already holds its full history (it was written when the
+ * conversation was originally created), so once `session_id` first appears in it — on the first
+ * post-resume turn — rebinding shows the complete transcript. Claude does not stamp
+ * `session_id` until that first turn, so a just-resumed, not-yet-prompted chat still shows its
+ * (empty) launch file until then; that is inherent to when the CLI writes the marker.
  */
 class SiblingTranscriptWatcher(
     private val dir: File,
+    private val launchSessionId: String,
     private val boundConvId: () -> String,
-    private val isActive: () -> Boolean,
     private val onSwitch: (String) -> Unit,
+    private val isActive: () -> Boolean = { true },
     private val pollIntervalMs: Long = 500,
 ) : Disposable {
 
-    /** mtimes at the start of the current watch window; files absent here are "new". */
-    private var baseline: Map<String, Long> = emptyMap()
-    private var baselineTaken = false
     @Volatile private var disposed = false
     private var future: ScheduledFuture<*>? = null
 
@@ -47,46 +55,55 @@ class SiblingTranscriptWatcher(
         return this
     }
 
-    /** Re-snapshot the baseline so only growth *after this point* can trigger the next switch. */
-    @Synchronized
-    fun resetBaseline() {
-        baseline = currentMtimes()
-        baselineTaken = true
-    }
-
     /** One detection cycle. Synchronous and synchronized so it is unit-testable. */
     @Synchronized
     fun pollOnce() {
-        if (disposed) return
-        val now = currentMtimes()
-        if (!baselineTaken) { baseline = now; baselineTaken = true; return }
-        if (!isActive()) return
+        if (disposed || !isActive()) return
 
-        val boundName = "${boundConvId()}.jsonl"
-        val boundMtime = now[boundName] ?: 0L
+        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".jsonl") } ?: return
 
-        // The most recently touched sibling that has actually grown since baseline.
-        val candidate = now.entries
-            .filter { (name, _) -> name != boundName }
-            .filter { (name, mtime) -> mtime > (baseline[name] ?: 0L) } // new or advanced = active
-            .maxByOrNull { it.value }
+        // Our current conversation is the most recently touched file whose latest content line
+        // carries our launch session id. Read newest-first and stop at the first match so we
+        // touch as few file tails as possible.
+        val current = files
+            .sortedByDescending { it.lastModified() }
+            .firstOrNull { latestSessionId(it) == launchSessionId }
+            ?.name?.removeSuffix(".jsonl")
             ?: return
 
-        // It must be more current than our own file to count as "the user moved on".
-        if (candidate.value <= boundMtime) return
-
-        val convId = candidate.key.removeSuffix(".jsonl")
-        resetBaseline() // adopt the switch point; the next /resume must grow past here
-        onSwitch(convId)
+        if (current != boundConvId()) onSwitch(current)
     }
 
-    private fun currentMtimes(): Map<String, Long> =
-        dir.listFiles { f -> f.isFile && f.name.endsWith(".jsonl") }
-            ?.associate { it.name to it.lastModified() }
-            ?: emptyMap()
+    /**
+     * The snake-case `session_id` of the most recent line that has one, read from the file's
+     * tail only (these files can be tens of MB). Returns null if the tail carries none.
+     */
+    private fun latestSessionId(file: File): String? {
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                val len = raf.length()
+                if (len == 0L) return null
+                val window = minOf(len, TAIL_BYTES)
+                raf.seek(len - window)
+                val bytes = ByteArray(window.toInt())
+                raf.readFully(bytes)
+                SESSION_ID_RE.findAll(String(bytes, Charsets.UTF_8)).lastOrNull()?.groupValues?.get(1)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     override fun dispose() {
         disposed = true
         future?.cancel(false)
+    }
+
+    private companion object {
+        /** How many trailing bytes of each transcript to scan for the newest `session_id`. */
+        const val TAIL_BYTES = 64L * 1024
+
+        /** Matches `"session_id":"<value>"`; a `null` value simply doesn't match. */
+        val SESSION_ID_RE = Regex("\"session_id\"\\s*:\\s*\"([^\"]+)\"")
     }
 }

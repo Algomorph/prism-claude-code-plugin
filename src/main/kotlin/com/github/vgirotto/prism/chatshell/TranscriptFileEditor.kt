@@ -41,13 +41,6 @@ class TranscriptFileEditor(
     private var attached = false
 
     init {
-        // Only follow a `/resume` when this transcript's own session is the foreground one, so a
-        // concurrent chat's resume in the shared project dir can't hijack this tab (its watcher
-        // runs independently of which editor is visible).
-        controller.isSessionActive = {
-            com.github.vgirotto.prism.services.AgentProcessManager.getInstance(project)
-                .activeSessionId == file.sessionId
-        }
         // createEditor runs on the EDT, so building the JCEF browser here is safe. The tab was
         // opened explicitly to be shown, so attach the live tail eagerly; select/deselect then
         // only toggle rendering on/off.
