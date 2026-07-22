@@ -54,6 +54,20 @@ class TranscriptController(
     @Volatile private var codexPoller: ScheduledFuture<*>? = null
     @Volatile private var boundFilePath: String? = null
 
+    /**
+     * True when this transcript's own Claude session is the active (foreground) one.
+     *
+     * The `/resume` sibling-file heuristic ([SiblingTranscriptWatcher]) can only tell *that* some
+     * conversation in the shared project dir grew, not *which* chat drove it. A `/resume` only
+     * ever happens in the session the user is currently typing into, so we gate the watcher on
+     * "am I the active session". Without this, a second chat's `/resume` would hijack this
+     * transcript — each editor-hosted transcript runs its own watcher concurrently, so editor
+     * visibility (`paused`) is no longer a proxy for "the user is driving this one".
+     *
+     * Defaults to always-active for the single-transcript and unit-test cases.
+     */
+    @Volatile var isSessionActive: () -> Boolean = { true }
+
     init {
         // Render-failure recovery (review #9): if a delta errors or times out in the view,
         // re-emit the whole visible transcript from our authoritative mirror.
@@ -107,7 +121,7 @@ class TranscriptController(
         val watcher = SiblingTranscriptWatcher(
             dir = dir,
             boundConvId = { boundConvId ?: "" },
-            isActive = { !paused && !disposed },
+            isActive = { !paused && !disposed && isSessionActive() },
             onSwitch = { convId ->
                 ApplicationManager.getApplication().invokeLater { if (!disposed) rebind(convId) }
             },

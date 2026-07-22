@@ -86,6 +86,36 @@ class SiblingTranscriptWatcherTest {
     }
 
     @Test
+    fun `a concurrent chat's resume does not hijack a non-active session's transcript`() {
+        // Two chats share the project dir. Chat #1 is bound to `c1`; Chat #2 (active session)
+        // /resumes into `resumed`. Chat #1's watcher, gated on "am I the active session", must
+        // NOT follow that growth (the editor-mode cross-talk bug). Only the active chat switches.
+        var activeSession = "c2"
+        val c1Switches = mutableListOf<String>()
+        val c2Switches = mutableListOf<String>()
+        jsonl("c1", 1_000)
+        jsonl("c2", 1_000)
+        val resumed = jsonl("resumed", 500)
+
+        val c1 = SiblingTranscriptWatcher(
+            dir = dir.toFile(), boundConvId = { "c1" },
+            isActive = { activeSession == "c1" }, onSwitch = { c1Switches.add(it) },
+        )
+        val c2 = SiblingTranscriptWatcher(
+            dir = dir.toFile(), boundConvId = { "c2" },
+            isActive = { activeSession == "c2" }, onSwitch = { c2Switches.add(it) },
+        )
+        c1.pollOnce(); c2.pollOnce() // baselines
+
+        // Chat #2 (foreground) resumes into `resumed`, which grows and overtakes.
+        resumed.writeText("x".repeat(50)); resumed.setLastModified(2_000)
+        c1.pollOnce(); c2.pollOnce()
+
+        assertEquals(emptyList<String>(), c1Switches, "the background chat must not rebind")
+        assertEquals(listOf("resumed"), c2Switches, "only the active chat follows its resume")
+    }
+
+    @Test
     fun `after a switch the baseline resets so it does not immediately re-fire`() {
         jsonl("bound", 1_000)
         val resumed = jsonl("resumed", 500)
