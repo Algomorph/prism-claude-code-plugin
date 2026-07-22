@@ -40,7 +40,7 @@ import javax.swing.JPanel
  */
 class TranscriptView(private val parentDisposable: Disposable) : Disposable {
 
-    enum class State { LOADING, NO_TRANSCRIPT_YET, READY, RECONNECTING, ERROR, UNAVAILABLE }
+    enum class State { LOADING, NO_TRANSCRIPT_YET, READY, RECONNECTING, RESUMING, ERROR, UNAVAILABLE }
 
     private val log = Logger.getInstance(TranscriptView::class.java)
     private val supported = JBCefApp.isSupported()
@@ -223,6 +223,7 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
             State.LOADING -> m("chatshell.loading")
             State.NO_TRANSCRIPT_YET -> m("chatshell.noTranscript")
             State.RECONNECTING -> m("chatshell.reconnecting")
+            State.RESUMING -> m("chatshell.resuming")
             State.ERROR -> m("chatshell.error")
             State.UNAVAILABLE -> m("chatshell.unavailable")
             State.READY -> null // content replaces the banner

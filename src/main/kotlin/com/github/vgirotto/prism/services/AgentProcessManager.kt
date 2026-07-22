@@ -40,6 +40,9 @@ class AgentProcessManager(private val project: Project) : Disposable {
     /** Listeners notified when a session process dies unexpectedly */
     private val processDeathListeners = mutableListOf<(String, String) -> Unit>()
 
+    /** Listeners notified (with the resuming session id) when a Prism-initiated `/resume` starts */
+    private val resumeListeners = java.util.concurrent.CopyOnWriteArrayList<(String) -> Unit>()
+
     // ── Backwards-compatible accessors (delegate to active session) ──
 
     val currentModel: String get() = activeSession?.model ?: ""
@@ -67,6 +70,27 @@ class AgentProcessManager(private val project: Project) : Disposable {
 
     fun addProcessDeathListener(listener: (sessionId: String, sessionName: String) -> Unit) {
         processDeathListeners.add(listener)
+    }
+
+    /** Register a resume listener; returns an unsubscribe handle (call on the listener's dispose). */
+    fun addResumeListener(listener: (sessionId: String) -> Unit): () -> Unit {
+        resumeListeners.add(listener)
+        return { resumeListeners.remove(listener) }
+    }
+
+    /**
+     * Record that a `/resume` was just initiated for the active session and notify listeners.
+     * Called from the toolbar Resume action — the one point where Prism knows a resume is
+     * starting (a `/resume` typed directly into the terminal is invisible to us).
+     */
+    fun notifyResumeInitiated() {
+        val sid = activeSessionId ?: return
+        sessions[sid]?.resumePending = true
+        ApplicationManager.getApplication().invokeLater {
+            for (l in resumeListeners) {
+                try { l(sid) } catch (_: Exception) {}
+            }
+        }
     }
 
     /**

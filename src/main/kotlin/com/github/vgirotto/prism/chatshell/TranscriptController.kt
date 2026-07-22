@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.chatshell
 
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -61,7 +62,24 @@ class TranscriptController(
      */
     @Volatile private var launchSessionId: String? = null
 
+    /**
+     * While true, a Prism-initiated `/resume` is in flight for this chat and the resumed
+     * conversation is not yet attributable to us (no per-chat id lands in the transcript file
+     * until the first post-resume turn). We show a "syncing on next message" hint and suppress
+     * rendering the now-abandoned launch file so the pane doesn't flash empty. Cleared when real
+     * content arrives (rebind or the current file gaining renderable messages) or on timeout.
+     */
+    @Volatile private var awaitingResume = false
+    @Volatile private var resumeHintTimeout: ScheduledFuture<*>? = null
+    private var resumeUnsub: (() -> Unit)? = null
+
     init {
+        // A Prism-initiated /resume for this chat raises the "syncing" hint (see [showResumeHint]).
+        resumeUnsub = AgentProcessManager.getInstance(project).addResumeListener { sid ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!disposed && sid == launchSessionId) showResumeHint()
+            }
+        }
         // Render-failure recovery (review #9): if a delta errors or times out in the view,
         // re-emit the whole visible transcript from our authoritative mirror.
         view.onRecoveryNeeded = {
@@ -94,6 +112,11 @@ class TranscriptController(
         subscription?.dispose()
         subscription = LiveTranscriptSource(file).subscribe { state -> onState(state) }
         ensureSiblingWatcher(file.parentFile)
+        // Opened while a Prism /resume is mid-flight (clicked Resume, then showed the transcript):
+        // pick up the pending hint the live listener above would have missed.
+        if (AgentProcessManager.getInstance(project).getSession(conversationId)?.resumePending == true) {
+            showResumeHint()
+        }
     }
 
     /**
@@ -105,11 +128,38 @@ class TranscriptController(
         if (disposed || conversationId == boundConvId) return
         val file = resolver.transcriptFile(conversationId) ?: return
         log.info("Transcript rebinding to resumed conversation $conversationId")
+        // The resume completed and is now attributable to us; the incoming stream carries the
+        // resumed history, so stand the hint down (its render clears the banner).
+        clearResumeHint(revert = false)
         boundConvId = conversationId
         subscription?.dispose()
         mirror.clear(); mirrorIndex.clear()
         sourceEpoch = -1L
         subscription = LiveTranscriptSource(file).subscribe { state -> onState(state) }
+    }
+
+    /** Show the "resumed — syncing on next message" hint until real content arrives (or timeout). */
+    private fun showResumeHint() {
+        if (disposed) return
+        awaitingResume = true
+        view.setState(TranscriptView.State.RESUMING)
+        resumeHintTimeout?.cancel(false)
+        // Safety net: a cancelled resume picker never produces content, so don't strand the hint.
+        resumeHintTimeout = AppExecutorUtil.getAppScheduledExecutorService().schedule({
+            ApplicationManager.getApplication().invokeLater { clearResumeHint(revert = true) }
+        }, RESUME_HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+    }
+
+    private fun clearResumeHint(revert: Boolean) {
+        resumeHintTimeout?.cancel(false); resumeHintTimeout = null
+        if (!awaitingResume) return
+        awaitingResume = false
+        launchSessionId?.let { AgentProcessManager.getInstance(project).getSession(it)?.resumePending = false }
+        if (revert && !disposed) {
+            // Nothing arrived (e.g. picker cancelled): fall back to the current stream's state.
+            if (mirror.any { it.isRenderable }) renderFull()
+            else view.setState(TranscriptView.State.NO_TRANSCRIPT_YET)
+        }
     }
 
     private fun ensureSiblingWatcher(dir: File?) {
@@ -191,23 +241,32 @@ class TranscriptController(
         if (disposed) return
         ApplicationManager.getApplication().invokeLater {
             if (disposed) return@invokeLater
+            // While a resume hint is up, the still-attached (now abandoned) launch file must not
+            // flash its empty placeholder states over the banner; only real content stands it down.
             when (state) {
-                is TranscriptState.Loading -> view.setState(TranscriptView.State.LOADING)
-                is TranscriptState.NoTranscriptYet -> view.setState(TranscriptView.State.NO_TRANSCRIPT_YET)
-                is TranscriptState.Reconnecting -> view.setState(TranscriptView.State.RECONNECTING)
+                is TranscriptState.Loading ->
+                    if (!awaitingResume) view.setState(TranscriptView.State.LOADING)
+                is TranscriptState.NoTranscriptYet ->
+                    if (!awaitingResume) view.setState(TranscriptView.State.NO_TRANSCRIPT_YET)
+                is TranscriptState.Reconnecting ->
+                    if (!awaitingResume) view.setState(TranscriptView.State.RECONNECTING)
                 is TranscriptState.Error -> {
                     log.warn("Transcript source error", state.error)
-                    view.setState(TranscriptView.State.ERROR)
+                    if (!awaitingResume) view.setState(TranscriptView.State.ERROR)
                 }
                 is TranscriptState.Ready -> {
                     sourceEpoch = state.epoch
                     viewEpoch++ // fresh view stream: first attach, rotation, or rebind
                     resetMirror(state.page.messages)
+                    if (awaitingResume && mirror.none { it.isRenderable }) return@invokeLater
+                    clearResumeHint(revert = false)
                     if (paused) pendingFullRender = true else renderFull()
                 }
                 is TranscriptState.Appended -> {
                     if (state.epoch != sourceEpoch) return@invokeLater
                     mergeMirror(state.messages)
+                    if (awaitingResume && state.messages.none { it.isRenderable }) return@invokeLater
+                    clearResumeHint(revert = false)
                     if (paused) { pendingFullRender = true; return@invokeLater }
                     val ops = state.messages.filter { it.isRenderable }.map { builder.upsertOp(it) }
                     if (ops.isNotEmpty()) {
@@ -240,7 +299,14 @@ class TranscriptController(
         disposed = true
         codexPoller?.cancel(false)
         codexPoller = null
+        resumeHintTimeout?.cancel(false); resumeHintTimeout = null
+        resumeUnsub?.invoke(); resumeUnsub = null
         subscription?.dispose()
         subscription = null
+    }
+
+    private companion object {
+        /** How long the resume hint lingers before assuming the resume was cancelled. */
+        const val RESUME_HINT_TIMEOUT_MS = 60_000L
     }
 }
