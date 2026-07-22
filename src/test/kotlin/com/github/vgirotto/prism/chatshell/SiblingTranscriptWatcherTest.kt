@@ -1,7 +1,6 @@
 package com.github.vgirotto.prism.chatshell
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -9,121 +8,114 @@ import java.nio.file.Path
 
 /**
  * Drives [SiblingTranscriptWatcher.pollOnce] synchronously (no background executor) to pin the
- * `/resume` switch heuristic (§9): only a sibling that grows *after* watching began and
- * overtakes the bound file counts, and only while the tab is active.
+ * `/resume` follow behavior. The watcher is a **hard signal**, not a heuristic: a chat launched
+ * with `--session-id S` is currently writing to the `.jsonl` whose newest content line carries
+ * snake-case `"session_id":"S"`, regardless of the file's own conversation id.
  */
 class SiblingTranscriptWatcherTest {
 
     @TempDir lateinit var dir: Path
 
-    private fun jsonl(id: String, mtime: Long, text: String = "x"): File =
-        File(dir.toFile(), "$id.jsonl").apply { writeText(text); setLastModified(mtime) }
+    /** Write `<convId>.jsonl` whose content line stamps [sessionId] (snake-case), at [mtime]. */
+    private fun transcript(convId: String, sessionId: String?, mtime: Long, extra: String = ""): File =
+        File(dir.toFile(), "$convId.jsonl").apply {
+            val sid = if (sessionId != null) "\"session_id\":\"$sessionId\"," else "\"session_id\":null,"
+            writeText("""{"type":"assistant",$sid"sessionId":"$convId"}$extra""" + "\n")
+            setLastModified(mtime)
+        }
 
-    private fun watcher(bound: String, active: Boolean = true): Pair<SiblingTranscriptWatcher, MutableList<String>> {
+    private fun watcher(
+        launch: String,
+        bound: String,
+        active: Boolean = true,
+    ): Pair<SiblingTranscriptWatcher, MutableList<String>> {
         val switches = mutableListOf<String>()
         val w = SiblingTranscriptWatcher(
             dir = dir.toFile(),
+            launchSessionId = launch,
             boundConvId = { bound },
-            isActive = { active },
             onSwitch = { switches.add(it) },
+            isActive = { active },
         )
         return w to switches
     }
 
     @Test
-    fun `first poll only snapshots baseline and never switches`() {
-        jsonl("bound", 1_000)
-        jsonl("old", 5_000) // newer, but pre-existing
-        val (w, switches) = watcher("bound")
+    fun `our own file is the only match so nothing switches`() {
+        transcript("S", sessionId = "S", mtime = 1_000)
+        val (w, switches) = watcher(launch = "S", bound = "S")
         w.pollOnce()
-        assertEquals(emptyList<String>(), switches, "baseline poll must not act")
+        assertEquals(emptyList<String>(), switches, "current == bound must not switch")
     }
 
     @Test
-    fun `pre-existing idle siblings never trigger a switch`() {
-        jsonl("bound", 1_000)
-        val old = jsonl("old", 9_000)
-        val (w, switches) = watcher("bound")
-        w.pollOnce() // baseline
-        w.pollOnce() // still idle
-        old.setLastModified(9_000) // unchanged
+    fun `a resumed conversation carrying our launch id triggers a switch`() {
+        // Launch file stays tiny (only the mode records; no session_id content).
+        File(dir.toFile(), "S.jsonl").apply { writeText("{\"type\":\"mode\"}\n"); setLastModified(1_000) }
+        // /resume into Y: Y.jsonl already holds its history and now stamps our session_id.
+        transcript("Y", sessionId = "S", mtime = 2_000)
+        val (w, switches) = watcher(launch = "S", bound = "S")
+        w.pollOnce()
+        assertEquals(listOf("Y"), switches, "must follow the file carrying our launch session id")
+    }
+
+    @Test
+    fun `a concurrent chat's file never triggers a switch`() {
+        // The cross-talk regression: chat #1 (launch S1) shares the dir with chat #2 (launch S2).
+        // Chat #2 writes/resumes — its files carry session_id S2, never S1 — so chat #1's watcher
+        // must stay put no matter which of chat #2's files is newest.
+        transcript("S1", sessionId = "S1", mtime = 1_000)          // chat #1's own file
+        transcript("S2", sessionId = "S2", mtime = 3_000)          // chat #2 fresh, newer
+        transcript("Y2", sessionId = "S2", mtime = 4_000)          // chat #2 resumed, newest
+        val (w, switches) = watcher(launch = "S1", bound = "S1")
+        w.pollOnce()
+        assertEquals(emptyList<String>(), switches, "another chat's session id must never hijack us")
+    }
+
+    @Test
+    fun `the newest file carrying our launch id wins across successive resumes`() {
+        File(dir.toFile(), "S.jsonl").apply { writeText("{\"type\":\"mode\"}\n"); setLastModified(1_000) }
+        transcript("Y", sessionId = "S", mtime = 2_000)            // first resume
+        transcript("Z", sessionId = "S", mtime = 5_000)            // later resume, newest
+        val (w, switches) = watcher(launch = "S", bound = "Y")
+        w.pollOnce()
+        assertEquals(listOf("Z"), switches)
+    }
+
+    @Test
+    fun `a null session_id line is not a match`() {
+        transcript("S", sessionId = "S", mtime = 1_000)
+        transcript("Q", sessionId = null, mtime = 9_000)           // newer but unstamped
+        val (w, switches) = watcher(launch = "S", bound = "S")
+        w.pollOnce()
+        assertEquals(emptyList<String>(), switches, "unstamped files must be ignored")
+    }
+
+    @Test
+    fun `no file carrying our launch id yields no switch`() {
+        transcript("A", sessionId = "other", mtime = 1_000)
+        transcript("B", sessionId = "other", mtime = 2_000)
+        val (w, switches) = watcher(launch = "S", bound = "S")
         w.pollOnce()
         assertEquals(emptyList<String>(), switches)
     }
 
     @Test
-    fun `a sibling that grows past baseline and overtakes bound triggers a switch`() {
-        jsonl("bound", 1_000)
-        val resumed = jsonl("resumed", 500) // exists but older than bound at baseline
-        val (w, switches) = watcher("bound")
-        w.pollOnce() // baseline
-        // User /resumes into `resumed`: it grows and overtakes the bound file.
-        resumed.writeText("x".repeat(50)); resumed.setLastModified(2_000)
-        w.pollOnce()
-        assertEquals(listOf("resumed"), switches)
-    }
-
-    @Test
-    fun `the bound file growing does not trigger a switch`() {
-        val bound = jsonl("bound", 1_000)
-        jsonl("other", 500)
-        val (w, switches) = watcher("bound")
-        w.pollOnce()
-        bound.setLastModified(3_000) // our own conversation advancing
+    fun `an inactive watcher never switches`() {
+        transcript("Y", sessionId = "S", mtime = 2_000)
+        val (w, switches) = watcher(launch = "S", bound = "S", active = false)
         w.pollOnce()
         assertEquals(emptyList<String>(), switches)
     }
 
     @Test
-    fun `an inactive (background) tab never switches`() {
-        jsonl("bound", 1_000)
-        val resumed = jsonl("resumed", 500)
-        val (w, switches) = watcher("bound", active = false)
+    fun `the newest session_id line in a growing file is the one that counts`() {
+        // A file that was chat #2's then got resumed away: its tail's latest session_id is what
+        // matters. Here the newest stamp is ours, so it is our current conversation.
+        transcript("Y", sessionId = "old", mtime = 1_000,
+            extra = "\n{\"type\":\"assistant\",\"session_id\":\"S\",\"sessionId\":\"Y\"}")
+        val (w, switches) = watcher(launch = "S", bound = "S")
         w.pollOnce()
-        resumed.setLastModified(9_000)
-        w.pollOnce()
-        assertEquals(emptyList<String>(), switches)
-    }
-
-    @Test
-    fun `a concurrent chat's resume does not hijack a non-active session's transcript`() {
-        // Two chats share the project dir. Chat #1 is bound to `c1`; Chat #2 (active session)
-        // /resumes into `resumed`. Chat #1's watcher, gated on "am I the active session", must
-        // NOT follow that growth (the editor-mode cross-talk bug). Only the active chat switches.
-        var activeSession = "c2"
-        val c1Switches = mutableListOf<String>()
-        val c2Switches = mutableListOf<String>()
-        jsonl("c1", 1_000)
-        jsonl("c2", 1_000)
-        val resumed = jsonl("resumed", 500)
-
-        val c1 = SiblingTranscriptWatcher(
-            dir = dir.toFile(), boundConvId = { "c1" },
-            isActive = { activeSession == "c1" }, onSwitch = { c1Switches.add(it) },
-        )
-        val c2 = SiblingTranscriptWatcher(
-            dir = dir.toFile(), boundConvId = { "c2" },
-            isActive = { activeSession == "c2" }, onSwitch = { c2Switches.add(it) },
-        )
-        c1.pollOnce(); c2.pollOnce() // baselines
-
-        // Chat #2 (foreground) resumes into `resumed`, which grows and overtakes.
-        resumed.writeText("x".repeat(50)); resumed.setLastModified(2_000)
-        c1.pollOnce(); c2.pollOnce()
-
-        assertEquals(emptyList<String>(), c1Switches, "the background chat must not rebind")
-        assertEquals(listOf("resumed"), c2Switches, "only the active chat follows its resume")
-    }
-
-    @Test
-    fun `after a switch the baseline resets so it does not immediately re-fire`() {
-        jsonl("bound", 1_000)
-        val resumed = jsonl("resumed", 500)
-        val (w, switches) = watcher("bound")
-        w.pollOnce()
-        resumed.setLastModified(2_000)
-        w.pollOnce() // fires once
-        w.pollOnce() // resumed still 2_000, not grown past the new baseline
-        assertEquals(listOf("resumed"), switches, "no repeat fire without further growth")
+        assertEquals(listOf("Y"), switches)
     }
 }

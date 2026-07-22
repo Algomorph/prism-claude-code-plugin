@@ -55,18 +55,11 @@ class TranscriptController(
     @Volatile private var boundFilePath: String? = null
 
     /**
-     * True when this transcript's own Claude session is the active (foreground) one.
-     *
-     * The `/resume` sibling-file heuristic ([SiblingTranscriptWatcher]) can only tell *that* some
-     * conversation in the shared project dir grew, not *which* chat drove it. A `/resume` only
-     * ever happens in the session the user is currently typing into, so we gate the watcher on
-     * "am I the active session". Without this, a second chat's `/resume` would hijack this
-     * transcript — each editor-hosted transcript runs its own watcher concurrently, so editor
-     * visibility (`paused`) is no longer a proxy for "the user is driving this one".
-     *
-     * Defaults to always-active for the single-transcript and unit-test cases.
+     * The `--session-id` this chat was launched with — the stable id [SiblingTranscriptWatcher]
+     * matches on to follow a `/resume` (it appears in every content line as snake-case
+     * `session_id`, even after the conversation file changes). Captured on first [attachLive].
      */
-    @Volatile var isSessionActive: () -> Boolean = { true }
+    @Volatile private var launchSessionId: String? = null
 
     init {
         // Render-failure recovery (review #9): if a delta errors or times out in the view,
@@ -94,6 +87,9 @@ class TranscriptController(
     fun attachLive(conversationId: String) {
         if (disposed) return
         val file = resolver.transcriptFile(conversationId) ?: return
+        // The first conversation we attach to is our launch --session-id; the sibling watcher
+        // follows a /resume by that stable id, so it must never be overwritten by a rebind.
+        if (launchSessionId == null) launchSessionId = conversationId
         boundConvId = conversationId
         subscription?.dispose()
         subscription = LiveTranscriptSource(file).subscribe { state -> onState(state) }
@@ -118,10 +114,15 @@ class TranscriptController(
 
     private fun ensureSiblingWatcher(dir: File?) {
         if (dir == null || siblingWatcher != null) return
+        val launch = launchSessionId ?: return
         val watcher = SiblingTranscriptWatcher(
             dir = dir,
+            launchSessionId = launch,
             boundConvId = { boundConvId ?: "" },
-            isActive = { !paused && !disposed && isSessionActive() },
+            // Runs regardless of which tab is visible: a background chat's own /resume must still
+            // be tracked so it renders correctly when shown. The session_id match guarantees this
+            // watcher only ever follows *its own* chat, so no active-tab gating is needed.
+            isActive = { !disposed },
             onSwitch = { convId ->
                 ApplicationManager.getApplication().invokeLater { if (!disposed) rebind(convId) }
             },

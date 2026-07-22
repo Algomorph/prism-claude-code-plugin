@@ -513,11 +513,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                                 // attach the live tail when this tab is (or becomes) selected (R20).
                                 val view = transcriptView!!
                                 val controller = transcriptController!!
-                                // Same active-session gate as editor mode: only the foreground
-                                // session's watcher may follow a /resume, so concurrent chats in
-                                // the shared project dir don't cross-bind (defensive here — the
-                                // tab-selection pause already makes this the selected tab).
-                                controller.isSessionActive = { pm.activeSessionId == result.sessionId }
                                 var attached = false
                                 val ensureAttached = {
                                     view.initialize(
