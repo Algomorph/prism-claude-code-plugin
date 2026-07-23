@@ -117,6 +117,19 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
         toolWindow.setTitleActions(listOf(newSessionAction, historyAction, toggleChangesAction))
 
+        // "Font Settings" entry in the tool window's options (⋮) menu — jumps to
+        // the IDE's terminal font settings, which the embedded terminal follows.
+        val fontSettingsAction = object : DumbAwareAction(
+            PrismBundle.message("toolwindow.font.settings"),
+            PrismBundle.message("toolwindow.font.settings.desc"),
+            AllIcons.General.Settings
+        ) {
+            override fun actionPerformed(e: AnActionEvent) {
+                openTerminalSettings(project)
+            }
+        }
+        toolWindow.setAdditionalGearActions(DefaultActionGroup(fontSettingsAction))
+
         // Listen for tab selection changes. Session teardown is deliberately not wired
         // here — see the content disposer in buildSessionTab.
         toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
@@ -433,6 +446,24 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         toolWindow.contentManager.addContent(content)
         toolWindow.contentManager.setSelectedContent(content)
         historyPanel.loadHistory()
+    }
+
+    /**
+     * Open the IDE's terminal settings page (Tools > Terminal), where the font
+     * settings the embedded terminal follows live. Navigates by the terminal
+     * configurable class when present (locale-independent); falls back to
+     * selecting it by display name.
+     */
+    private fun openTerminalSettings(project: Project) {
+        val util = com.intellij.openapi.options.ShowSettingsUtil.getInstance()
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val configurable = Class.forName("org.jetbrains.plugins.terminal.TerminalOptionsConfigurable")
+                as Class<out com.intellij.openapi.options.Configurable>
+            util.showSettingsDialog(project, configurable)
+        } catch (_: Throwable) {
+            util.showSettingsDialog(project, "Terminal")
+        }
     }
 
     private fun showCliNotFoundError(project: Project, toolWindow: ToolWindow, cli: AgentCli) {
