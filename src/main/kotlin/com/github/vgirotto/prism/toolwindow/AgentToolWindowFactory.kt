@@ -26,7 +26,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.terminal.JBTerminalSystemSettingsProviderBase
+import com.github.vgirotto.prism.terminal.PrismTerminalSettingsProvider
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.ContentManagerEvent
@@ -226,7 +226,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         Disposer.register(toolWindow.disposable, disposable)
 
         try {
-            val settingsProvider = JBTerminalSystemSettingsProviderBase()
+            val settingsProvider = PrismTerminalSettingsProvider()
             val terminalWidget = JBTerminalWidget(project, settingsProvider, disposable)
 
             // The picker takes focus so the press that closes it never reaches the terminal;
