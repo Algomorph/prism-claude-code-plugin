@@ -5,44 +5,47 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.terminal.JBTerminalSystemSettingsProviderBase
 import java.awt.Font
-import java.lang.reflect.Method
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Terminal settings for the embedded Prism terminal that follow the IDE's own
- * terminal font settings (Settings > Tools > Terminal > Font Settings) instead
- * of the editor's console color-scheme font, which is what the bare
- * [JBTerminalSystemSettingsProviderBase] uses.
+ * terminal font settings (Settings > Tools > Terminal > Font Settings).
  *
- * The reworked-terminal font settings live in
- * `org.jetbrains.plugins.terminal.TerminalFontSettingsService`, which does not
- * exist on the 2024.3 platform baseline this plugin builds against — so it is
- * read reflectively via [ReworkedTerminalFont]. When the service is unavailable
- * (older IDEs), every override transparently falls back to the base behavior.
+ * The bare [JBTerminalSystemSettingsProviderBase] sources the font family from
+ * the editor's console color scheme and its size from an *unscaled* console
+ * font-size provider — so on a HiDPI display the embedded terminal renders in
+ * the wrong font, tiny. The IDE's own terminal instead uses the terminal
+ * plugin's `JBTerminalSystemSettingsProvider`, which reads the reworked font
+ * family and, crucially, a HiDPI-*scaled* size.
  *
- * Font size is intentionally left to the base class: on every supported IDE the
- * base already sources it from the terminal's own (zoom-aware) size provider, so
- * overriding it here would break Ctrl+scroll zoom.
+ * We keep extending the base (so all of Prism's tuned shortcut/paste behavior is
+ * preserved) but delegate only the font, font size, and line spacing to an
+ * instance of that IDE provider. It lives in the terminal plugin, which is not
+ * on the 2024.3 build baseline's API surface, so it is instantiated reflectively
+ * through the terminal plugin's own classloader. When unavailable (older IDEs),
+ * every delegate transparently falls back to the base behavior.
  */
 class PrismTerminalSettingsProvider : JBTerminalSystemSettingsProviderBase() {
 
+    private val ideProvider: JBTerminalSystemSettingsProviderBase? = IdeTerminalProvider.create()
     private val logged = AtomicBoolean(false)
 
     override fun getTerminalFont(): Font {
-        val family = ReworkedTerminalFont.fontFamily()
+        val font = ideProvider?.terminalFont ?: super.getTerminalFont()
         if (logged.compareAndSet(false, true)) {
             LOG.info(
-                "Prism terminal font: reworked family=${family ?: "<none>"}, " +
-                    "console fallback family=${super.getTerminalFont().family}, size=$terminalFontSize"
+                "Prism terminal font: delegate=${ideProvider != null}, " +
+                    "family=${font.family}, size=${font.size2D}"
             )
         }
-        family ?: return super.getTerminalFont()
-        // Match the base contract: build the family at the current (zoom-aware) size.
-        return Font(family, Font.PLAIN, 1).deriveFont(terminalFontSize)
+        return font
     }
 
+    override fun getTerminalFontSize(): Float =
+        ideProvider?.terminalFontSize ?: super.getTerminalFontSize()
+
     override fun getLineSpacing(): Float =
-        ReworkedTerminalFont.lineSpacing() ?: super.getLineSpacing()
+        ideProvider?.lineSpacing ?: super.getLineSpacing()
 
     companion object {
         private val LOG = Logger.getInstance(PrismTerminalSettingsProvider::class.java)
@@ -50,83 +53,29 @@ class PrismTerminalSettingsProvider : JBTerminalSystemSettingsProviderBase() {
 }
 
 /**
- * Null-safe reflective reader for the reworked terminal's font settings. Handle
- * lookup is cached; individual reads are live so changes to the IDE terminal
- * font are picked up on the next repaint. Any failure yields `null`, letting the
- * caller fall back to platform defaults.
+ * Instantiates the terminal plugin's own `JBTerminalSystemSettingsProvider`
+ * (the exact provider the IDE's terminal uses) through the terminal plugin's
+ * classloader, which is guaranteed to see it. Returns it typed as the platform
+ * base class. Any failure yields `null` so the caller falls back to defaults.
  */
-private object ReworkedTerminalFont {
+private object IdeTerminalProvider {
 
-    private val LOG = Logger.getInstance(ReworkedTerminalFont::class.java)
-    private val readFailureLogged = AtomicBoolean(false)
+    private val LOG = Logger.getInstance(IdeTerminalProvider::class.java)
 
-    private class Handles(
-        val getInstance: Method,
-        val getSettings: Method,
-        val getFontFamily: Method,
-        val getLineSpacing: Method,
-        val lineSpacingFloatValue: Method,
-    )
-
-    private val handles: Handles? by lazy { resolve() }
-
-    /**
-     * Load a terminal-plugin class through the terminal plugin's own classloader,
-     * which is guaranteed to see it, rather than this plugin's classloader (whose
-     * visibility depends on the module wiring of the `<depends>` declaration).
-     */
-    private fun terminalClass(fqn: String): Class<*> {
-        val loader = PluginManagerCore.getPlugin(PluginId.getId("org.jetbrains.plugins.terminal"))
+    fun create(): JBTerminalSystemSettingsProviderBase? = try {
+        val loader = PluginManagerCore
+            .getPlugin(PluginId.getId("org.jetbrains.plugins.terminal"))
             ?.pluginClassLoader
-        return if (loader != null) Class.forName(fqn, false, loader) else Class.forName(fqn)
-    }
-
-    private fun resolve(): Handles? = try {
-        val serviceCls = terminalClass("org.jetbrains.plugins.terminal.TerminalFontSettingsService")
-        val settingsCls = terminalClass("org.jetbrains.plugins.terminal.TerminalFontSettings")
-        val lineSpacingCls = terminalClass("org.jetbrains.plugins.terminal.TerminalLineSpacing")
-        Handles(
-            getInstance = serviceCls.getMethod("getInstance"),
-            getSettings = serviceCls.getMethod("getSettings"),
-            getFontFamily = settingsCls.getMethod("getFontFamily"),
-            getLineSpacing = settingsCls.getMethod("getLineSpacing"),
-            lineSpacingFloatValue = lineSpacingCls.getMethod("getFloatValue"),
-        )
+        if (loader == null) {
+            null
+        } else {
+            val cls = Class.forName(
+                "org.jetbrains.plugins.terminal.JBTerminalSystemSettingsProvider", true, loader
+            )
+            cls.getDeclaredConstructor().newInstance() as? JBTerminalSystemSettingsProviderBase
+        }
     } catch (t: Throwable) {
-        LOG.info("Reworked terminal font settings unavailable; using console font. Cause: $t")
+        LOG.info("IDE terminal settings provider unavailable; using base font. Cause: $t")
         null
-    }
-
-    private fun settings(h: Handles): Any? {
-        return try {
-            val service = h.getInstance.invoke(null) ?: return null
-            h.getSettings.invoke(service)
-        } catch (t: Throwable) {
-            if (readFailureLogged.compareAndSet(false, true)) {
-                LOG.warn("Failed to read reworked terminal font settings", t)
-            }
-            null
-        }
-    }
-
-    fun fontFamily(): String? {
-        val h = handles ?: return null
-        return try {
-            val s = settings(h) ?: return null
-            (h.getFontFamily.invoke(s) as? String)?.takeIf { it.isNotBlank() }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    fun lineSpacing(): Float? {
-        val h = handles ?: return null
-        return try {
-            val s = settings(h) ?: return null
-            val lineSpacing = h.getLineSpacing.invoke(s) ?: return null
-            (h.lineSpacingFloatValue.invoke(lineSpacing) as? Float)?.takeIf { it > 0f }
-        } catch (_: Throwable) {
-            null
-        }
     }
 }
