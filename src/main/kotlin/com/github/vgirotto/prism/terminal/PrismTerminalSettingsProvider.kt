@@ -1,8 +1,12 @@
 package com.github.vgirotto.prism.terminal
 
+import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.terminal.JBTerminalSystemSettingsProviderBase
 import java.awt.Font
 import java.lang.reflect.Method
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Terminal settings for the embedded Prism terminal that follow the IDE's own
@@ -22,14 +26,27 @@ import java.lang.reflect.Method
  */
 class PrismTerminalSettingsProvider : JBTerminalSystemSettingsProviderBase() {
 
+    private val logged = AtomicBoolean(false)
+
     override fun getTerminalFont(): Font {
-        val family = ReworkedTerminalFont.fontFamily() ?: return super.getTerminalFont()
+        val family = ReworkedTerminalFont.fontFamily()
+        if (logged.compareAndSet(false, true)) {
+            LOG.info(
+                "Prism terminal font: reworked family=${family ?: "<none>"}, " +
+                    "console fallback family=${super.getTerminalFont().family}, size=$terminalFontSize"
+            )
+        }
+        family ?: return super.getTerminalFont()
         // Match the base contract: build the family at the current (zoom-aware) size.
         return Font(family, Font.PLAIN, 1).deriveFont(terminalFontSize)
     }
 
     override fun getLineSpacing(): Float =
         ReworkedTerminalFont.lineSpacing() ?: super.getLineSpacing()
+
+    companion object {
+        private val LOG = Logger.getInstance(PrismTerminalSettingsProvider::class.java)
+    }
 }
 
 /**
@@ -39,6 +56,9 @@ class PrismTerminalSettingsProvider : JBTerminalSystemSettingsProviderBase() {
  * caller fall back to platform defaults.
  */
 private object ReworkedTerminalFont {
+
+    private val LOG = Logger.getInstance(ReworkedTerminalFont::class.java)
+    private val readFailureLogged = AtomicBoolean(false)
 
     private class Handles(
         val getInstance: Method,
@@ -50,10 +70,21 @@ private object ReworkedTerminalFont {
 
     private val handles: Handles? by lazy { resolve() }
 
+    /**
+     * Load a terminal-plugin class through the terminal plugin's own classloader,
+     * which is guaranteed to see it, rather than this plugin's classloader (whose
+     * visibility depends on the module wiring of the `<depends>` declaration).
+     */
+    private fun terminalClass(fqn: String): Class<*> {
+        val loader = PluginManagerCore.getPlugin(PluginId.getId("org.jetbrains.plugins.terminal"))
+            ?.pluginClassLoader
+        return if (loader != null) Class.forName(fqn, false, loader) else Class.forName(fqn)
+    }
+
     private fun resolve(): Handles? = try {
-        val serviceCls = Class.forName("org.jetbrains.plugins.terminal.TerminalFontSettingsService")
-        val settingsCls = Class.forName("org.jetbrains.plugins.terminal.TerminalFontSettings")
-        val lineSpacingCls = Class.forName("org.jetbrains.plugins.terminal.TerminalLineSpacing")
+        val serviceCls = terminalClass("org.jetbrains.plugins.terminal.TerminalFontSettingsService")
+        val settingsCls = terminalClass("org.jetbrains.plugins.terminal.TerminalFontSettings")
+        val lineSpacingCls = terminalClass("org.jetbrains.plugins.terminal.TerminalLineSpacing")
         Handles(
             getInstance = serviceCls.getMethod("getInstance"),
             getSettings = serviceCls.getMethod("getSettings"),
@@ -61,7 +92,8 @@ private object ReworkedTerminalFont {
             getLineSpacing = settingsCls.getMethod("getLineSpacing"),
             lineSpacingFloatValue = lineSpacingCls.getMethod("getFloatValue"),
         )
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        LOG.info("Reworked terminal font settings unavailable; using console font. Cause: $t")
         null
     }
 
@@ -69,7 +101,10 @@ private object ReworkedTerminalFont {
         return try {
             val service = h.getInstance.invoke(null) ?: return null
             h.getSettings.invoke(service)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            if (readFailureLogged.compareAndSet(false, true)) {
+                LOG.warn("Failed to read reworked terminal font settings", t)
+            }
             null
         }
     }
