@@ -60,8 +60,8 @@
         <li>Live: the transcript follows the session as it runs, matches the IDE light/dark theme in place, and is localized (en/es/pt).</li>
         <li>Safe: transcript content is rendered in-browser through escape → marked → DOMPurify → trusted nodes under a strict CSP; images are decoded/validated/re-encoded (no SVG, no remote loads).</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
+        <li>Live transcripts work for both <strong>Claude</strong> (via <code>--session-id</code>) and <strong>Codex</strong> (rollout resolved by project + recency), in the tool-window split or the editor area — your choice in Settings.</li>
         <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
-        <li>Note: the live transcript pane currently requires a Claude CLI with <code>--session-id</code>; Codex sessions keep the terminal experience while transcript support lands.</li>
     </ul>
     <h2>v1.2.2 — Smart Paste on Linux</h2>
     <ul>

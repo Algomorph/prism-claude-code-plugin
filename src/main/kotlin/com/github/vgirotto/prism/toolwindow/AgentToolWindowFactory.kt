@@ -348,10 +348,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // the transcript renders in this pane above the terminal, as before. The browser is
             // created lazily on first tab-select (R20).
             //
-            // Editor hosting keys the tab's virtual file on a session id, which only Claude
-            // (--session-id) supplies, so it is gated to Claude. Codex always uses split mode:
-            // its rollout is resolved by cwd + recency (design §11), not by a caller-side id.
-            val inEditor = AgentSettingsState.getInstance().showTranscriptInEditor && cli == AgentCli.CLAUDE
+            // Editor hosting keys the tab's virtual file on the Prism session id (both CLIs have
+            // one). The editor's live tail is CLI-aware: Claude reads <convId>.jsonl, Codex
+            // resolves its rollout by cwd + recency (design §11). Both honor this setting.
+            val inEditor = AgentSettingsState.getInstance().showTranscriptInEditor
             val contentHolder = arrayOfNulls<Content>(1)
 
             val transcriptView: com.github.vgirotto.prism.chatshell.TranscriptView?
@@ -486,9 +486,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
                             // The conversation id equals the session id when --session-id is
                             // supported (Claude); otherwise there is no deterministic transcript
-                            // file (a Claude version without --session-id). Codex never reaches
-                            // editor mode (gated above) and tails its rollout in split mode.
+                            // file (a Claude version without --session-id). Codex ignores convId and
+                            // resolves its rollout by cwd + recency instead.
                             val convId = result.sessionId
+                            // A transcript can be rendered when we have a source to tail: Codex
+                            // always resolves one from the project; Claude needs --session-id.
+                            val canRenderTranscript = cli == AgentCli.CODEX || deterministicSupported
 
                             if (inEditor) {
                                 // transcript-in-editor: prepare the tab's virtual file; the toggle
@@ -496,11 +499,11 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                                 // + tail, so nothing renders until the user shows it (R20). When the
                                 // CLI can't render a transcript, disable the toggle rather than open
                                 // an empty tab.
-                                if (deterministicSupported) {
+                                if (canRenderTranscript) {
                                     content.putUserData(
                                         TRANSCRIPT_FILE_KEY,
                                         com.github.vgirotto.prism.chatshell.TranscriptVirtualFile(
-                                            result.sessionId, convId, sessionName
+                                            result.sessionId, convId, sessionName, cli
                                         )
                                     )
                                 } else {
