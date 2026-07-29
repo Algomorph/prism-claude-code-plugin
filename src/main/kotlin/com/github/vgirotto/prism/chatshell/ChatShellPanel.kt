@@ -16,35 +16,39 @@ import javax.swing.JPanel
  * Composes an always-visible header row (command toolbar + a Show/Hide Transcript toggle,
  * pinned upper-right like the IDE's show/hide changes-pane button) above the terminal — design §6.4.
  *
- * Two layouts, chosen by [editorMode]:
- *  - **Editor mode** (default, [onEditorToggle] supplied): the transcript lives in a separate
- *    IDE editor tab, so this panel is just the header over the terminal. The toggle opens/closes
- *    that editor tab via [onEditorToggle]; the factory calls [setTranscriptVisibleExternally]
- *    when the tab is closed by its × so the button label stays truthful.
- *  - **Split mode**: the transcript renders in this pane, above the terminal, behind a
- *    [JBSplitter]; the toggle collapses/reveals it and the proportion is persisted per project.
+ * The terminal always lives in the splitter's second component and is **never reparented**, so a
+ * live [setHosting] switch between the two transcript hostings cannot disturb the running session:
+ *  - **Split mode**: the transcript renders in the splitter's first component, above the terminal;
+ *    the toggle collapses/reveals it and the proportion is persisted per project.
+ *  - **Editor mode** ([onEditorToggle] supplied, first component empty): the transcript lives in a
+ *    separate IDE editor tab; the toggle opens/closes it via [onEditorToggle], and the factory
+ *    calls [setTranscriptVisibleExternally] when the tab is closed by its × so the label stays true.
  *
- * The header lives **outside** the splitter so the toolbar and toggle stay reachable even when
- * the transcript is collapsed/absent. To ease adoption the transcript starts **hidden**.
+ * The header lives **outside** the splitter so the toolbar and toggle stay reachable even when the
+ * transcript is collapsed/absent. To ease adoption the transcript starts **hidden**.
  */
 class ChatShellPanel(
     project: Project,
     toolbar: JComponent,
-    private val transcriptComponent: JComponent?,
+    transcriptComponent: JComponent?,
     private val terminalComponent: JComponent,
-    private val editorMode: Boolean = false,
-    private val onEditorToggle: (() -> Unit)? = null,
+    editorMode: Boolean = false,
+    onEditorToggle: (() -> Unit)? = null,
 ) : JPanel(BorderLayout()) {
 
     private val props = PropertiesComponent.getInstance(project)
-    private val splitter: JBSplitter? = if (editorMode) null else JBSplitter(true, restoreProportion())
-    private var savedProportion = splitter?.proportion ?: DEFAULT_PROPORTION
+    private val splitter = JBSplitter(true, restoreProportion())
+    private var savedProportion = splitter.proportion
+
+    private var editorMode = editorMode
+    private var onEditorToggle = onEditorToggle
+    private var transcriptComponent = transcriptComponent
     private var transcriptVisible = if (editorMode) false else props.getBoolean(VISIBLE_KEY, false)
 
     private val toggleButton = JButton().apply {
         isFocusable = true
         addActionListener {
-            if (editorMode) onEditorToggle?.invoke()
+            if (this@ChatShellPanel.editorMode) this@ChatShellPanel.onEditorToggle?.invoke()
             else setTranscriptVisible(!transcriptVisible)
         }
     }
@@ -59,34 +63,67 @@ class ChatShellPanel(
         }
         add(header, BorderLayout.NORTH)
 
-        val sp = splitter
-        if (sp == null) {
-            // Editor mode: header over the terminal; transcript is a separate editor tab.
-            add(terminalComponent, BorderLayout.CENTER)
-            applyToggleLabel()
-        } else {
-            // Split mode: minimumSize 0 lets a hidden transcript collapse fully at proportion 0f
-            // while the splitter still honors the terminal's minimum height.
-            transcriptComponent?.let { it.minimumSize = Dimension(0, 0) }
-            terminalComponent.minimumSize = Dimension(0, JBUI.scale(MIN_TERMINAL_PX))
-            sp.firstComponent = transcriptComponent
-            sp.secondComponent = terminalComponent
-            sp.dividerWidth = JBUI.scale(3)
-            sp.setHonorComponentsMinimumSize(true)
-
-            sp.addPropertyChangeListener(JBSplitter.PROP_PROPORTION) {
-                // Persist the proportion only while the transcript is shown, so the collapsed
-                // 0f is never saved as the restore point.
-                if (transcriptVisible) {
-                    savedProportion = sp.proportion
-                    props.setValue(PROPORTION_KEY, savedProportion.toString())
-                }
+        // The terminal keeps its minimum height and is the permanent second component; a hidden or
+        // absent transcript collapses the first component fully at proportion 0f.
+        terminalComponent.minimumSize = Dimension(0, JBUI.scale(MIN_TERMINAL_PX))
+        splitter.secondComponent = terminalComponent
+        splitter.dividerWidth = JBUI.scale(3)
+        splitter.setHonorComponentsMinimumSize(true)
+        splitter.addPropertyChangeListener(JBSplitter.PROP_PROPORTION) {
+            // Persist the proportion only in split mode while the transcript is shown, so the
+            // collapsed 0f (or editor mode) is never saved as the restore point.
+            if (!this.editorMode && transcriptVisible) {
+                savedProportion = splitter.proportion
+                props.setValue(PROPORTION_KEY, savedProportion.toString())
             }
+        }
+        add(splitter, BorderLayout.CENTER)
 
-            add(sp, BorderLayout.CENTER)
-            applyVisibility()
+        installTranscriptComponent()
+        applyVisibility()
+    }
+
+    /**
+     * Switch transcript hosting at runtime (Settings → "Show transcript in the editor area"),
+     * keeping the terminal and toolbar in place. [showTranscript] is where the transcript should
+     * end up displayed after the switch (in the pane for split mode, or as the caller's cue to
+     * open the editor tab in editor mode) so the currently-shown transcript follows the toggle.
+     */
+    fun setHosting(
+        transcriptComponent: JComponent?,
+        editorMode: Boolean,
+        onEditorToggle: (() -> Unit)?,
+        showTranscript: Boolean,
+    ) {
+        this.editorMode = editorMode
+        this.onEditorToggle = onEditorToggle
+        this.transcriptComponent = transcriptComponent
+        toggleButton.isEnabled = true
+        toggleButton.toolTipText = null
+        installTranscriptComponent()
+        transcriptVisible = showTranscript
+        if (!editorMode) {
+            props.setValue(VISIBLE_KEY, showTranscript)
+            savedProportion = savedProportion.coerceIn(0.1f, 0.9f)
+        }
+        applyVisibility()
+        revalidate()
+        repaint()
+    }
+
+    private fun installTranscriptComponent() {
+        val tc = transcriptComponent
+        if (!editorMode && tc != null) {
+            tc.minimumSize = Dimension(0, 0)
+            splitter.firstComponent = tc
+        } else {
+            // Editor mode (or not yet built): no in-pane transcript; the terminal fills the pane.
+            splitter.firstComponent = null
         }
     }
+
+    /** True when the transcript is currently displayed (shown in the pane, or its editor tab open). */
+    fun isTranscriptVisible(): Boolean = transcriptVisible
 
     /**
      * Editor mode: the factory reports the real editor-tab state here (e.g. the user closed the
@@ -107,14 +144,14 @@ class ChatShellPanel(
 
     private fun setTranscriptVisible(visible: Boolean) {
         if (visible == transcriptVisible) return
-        if (!visible) savedProportion = (splitter?.proportion ?: savedProportion).coerceIn(0.1f, 0.9f)
+        if (!visible) savedProportion = splitter.proportion.coerceIn(0.1f, 0.9f)
         transcriptVisible = visible
         props.setValue(VISIBLE_KEY, visible)
         applyVisibility()
     }
 
     private fun applyVisibility() {
-        splitter?.let { it.proportion = if (transcriptVisible) savedProportion else 0.0f }
+        if (!editorMode) splitter.proportion = if (transcriptVisible) savedProportion else 0.0f
         applyToggleLabel()
     }
 
