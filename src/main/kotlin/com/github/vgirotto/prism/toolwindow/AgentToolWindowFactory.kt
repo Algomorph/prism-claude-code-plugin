@@ -69,6 +69,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         val CHAT_PANEL_KEY =
             Key.create<com.github.vgirotto.prism.chatshell.ChatShellPanel>("PrismChatShellPanel")
 
+        /** Per-tab hook to migrate its transcript hosting live when the setting flips; the arg is
+         *  the new "transcript in editor" value. Set once the session has started. */
+        val REHOST_KEY = Key.create<(Boolean) -> Unit>("PrismTranscriptRehost")
+
         private var sessionCounter = 0
 
         fun nextSessionName(): String {
@@ -151,6 +155,22 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     findContentBySessionId(toolWindow, file.sessionId)
                         ?.getUserData(CHAT_PANEL_KEY)
                         ?.setTranscriptVisibleExternally(false)
+                }
+            }
+        )
+
+        // Live-migrate every open chat when the "transcript in editor" setting flips, in either
+        // direction, so the checkbox dynamically re-homes what is displayed instead of only
+        // affecting chats opened afterward.
+        ApplicationManager.getApplication().messageBus.connect(toolWindow.disposable).subscribe(
+            com.github.vgirotto.prism.settings.TranscriptHostingListener.TOPIC,
+            com.github.vgirotto.prism.settings.TranscriptHostingListener { inEditor ->
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) return@invokeLater
+                    for (i in 0 until toolWindow.contentManager.contentCount) {
+                        toolWindow.contentManager.getContent(i)
+                            ?.getUserData(REHOST_KEY)?.invoke(inEditor)
+                    }
                 }
             }
         )
@@ -354,30 +374,14 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             val inEditor = AgentSettingsState.getInstance().showTranscriptInEditor
             val contentHolder = arrayOfNulls<Content>(1)
 
-            val transcriptView: com.github.vgirotto.prism.chatshell.TranscriptView?
-            val transcriptController: com.github.vgirotto.prism.chatshell.TranscriptController?
-            val chatShellPanel: com.github.vgirotto.prism.chatshell.ChatShellPanel
-
-            if (inEditor) {
-                transcriptView = null
-                transcriptController = null
-                chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
-                    project, toolbar, null, terminalPanel, editorMode = true,
-                    onEditorToggle = { toggleTranscriptEditor(project, contentHolder[0]) }
-                )
-            } else {
-                val tv = com.github.vgirotto.prism.chatshell.TranscriptView(disposable)
-                tv.onOpenLink = { href ->
-                    try { com.intellij.ide.BrowserUtil.browse(href) } catch (_: Exception) {}
-                }
-                val tc = com.github.vgirotto.prism.chatshell.TranscriptController(project, tv)
-                Disposer.register(disposable, tc)
-                transcriptView = tv
-                transcriptController = tc
-                chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
-                    project, toolbar, tv.component, terminalPanel
-                )
-            }
+            // The transcript rendering stack is built (and can be rebuilt) in the session-start
+            // callback below, so start with no transcript. The panel's terminal and toolbar are
+            // never reparented, so flipping the hosting setting later can swap only the transcript
+            // slot without disturbing the running session.
+            val chatShellPanel = com.github.vgirotto.prism.chatshell.ChatShellPanel(
+                project, toolbar, null, terminalPanel, editorMode = inEditor,
+                onEditorToggle = { toggleTranscriptEditor(project, contentHolder[0]) }
+            )
 
             // Each tab gets its own DiffPanel (no parent-sharing issues)
             val diffPanel = DiffPanel(project) {
@@ -493,29 +497,29 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             // always resolves one from the project; Claude needs --session-id.
                             val canRenderTranscript = cli == AgentCli.CODEX || deterministicSupported
 
-                            if (inEditor) {
-                                // transcript-in-editor: prepare the tab's virtual file; the toggle
-                                // (or a later show) opens it. The FileEditor builds its own browser
-                                // + tail, so nothing renders until the user shows it (R20). When the
-                                // CLI can't render a transcript, disable the toggle rather than open
-                                // an empty tab.
-                                if (canRenderTranscript) {
-                                    content.putUserData(
-                                        TRANSCRIPT_FILE_KEY,
-                                        com.github.vgirotto.prism.chatshell.TranscriptVirtualFile(
-                                            result.sessionId, convId, sessionName, cli
-                                        )
-                                    )
-                                } else {
-                                    chatShellPanel.setToggleEnabled(
-                                        false, PrismBundle.message("chatshell.unavailable")
-                                    )
+                            // Currently-active split transcript stack (view + controller + selection
+                            // listener), so a live hosting switch can dispose exactly this. Null in
+                            // editor mode. `hostingInEditor` tracks which hosting is live.
+                            var splitStack: com.intellij.openapi.Disposable? = null
+                            var hostingInEditor = inEditor
+
+                            fun teardownSplitStack() {
+                                splitStack?.let { Disposer.dispose(it) }
+                                splitStack = null
+                            }
+
+                            // Build the in-pane (split) transcript: lazily initialize the browser +
+                            // attach the live tail when this tab is (or becomes) selected, pausing
+                            // when another tab is (R20). [show] reveals the pane after the build.
+                            fun buildSplitStack(show: Boolean) {
+                                val stackDisposable = Disposer.newDisposable(disposable, "SplitTranscript")
+                                splitStack = stackDisposable
+                                val view = com.github.vgirotto.prism.chatshell.TranscriptView(stackDisposable)
+                                view.onOpenLink = { href ->
+                                    try { com.intellij.ide.BrowserUtil.browse(href) } catch (_: Exception) {}
                                 }
-                            } else {
-                                // Split mode: lazily initialize the in-pane transcript browser +
-                                // attach the live tail when this tab is (or becomes) selected (R20).
-                                val view = transcriptView!!
-                                val controller = transcriptController!!
+                                val controller = com.github.vgirotto.prism.chatshell.TranscriptController(project, view)
+                                Disposer.register(stackDisposable, controller)
                                 var attached = false
                                 val ensureAttached = {
                                     view.initialize(
@@ -540,13 +544,13 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                                         )
                                     }
                                 }
+                                chatShellPanel.setHosting(
+                                    view.component, editorMode = false, onEditorToggle = null,
+                                    showTranscript = show,
+                                )
                                 if (toolWindow.contentManager.selectedContent === content) {
                                     ensureAttached()
                                 }
-                                // Lazy init + background-tab batching: resume rendering when this
-                                // tab is selected, pause (coalesce deltas) when another is (R20).
-                                // Registered for removal with the tab disposable so it does not
-                                // accumulate on the shared content manager (review #6).
                                 val selectionListener = object : ContentManagerListener {
                                     override fun selectionChanged(event: ContentManagerEvent) {
                                         if (event.content !== content) return
@@ -555,10 +559,68 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                                     }
                                 }
                                 toolWindow.contentManager.addContentManagerListener(selectionListener)
-                                Disposer.register(disposable, com.intellij.openapi.Disposable {
+                                Disposer.register(stackDisposable, com.intellij.openapi.Disposable {
                                     toolWindow.contentManager.removeContentManagerListener(selectionListener)
                                 })
                             }
+
+                            // Build transcript-in-editor: register the tab's virtual file; the
+                            // FileEditor owns its own browser + tail and renders nothing until shown
+                            // (R20). When [show], open that tab now so a switch keeps it displayed.
+                            fun buildEditorHosting(show: Boolean) {
+                                content.putUserData(
+                                    TRANSCRIPT_FILE_KEY,
+                                    if (canRenderTranscript)
+                                        com.github.vgirotto.prism.chatshell.TranscriptVirtualFile(
+                                            result.sessionId, convId, sessionName, cli
+                                        )
+                                    else null
+                                )
+                                chatShellPanel.setHosting(
+                                    null, editorMode = true,
+                                    onEditorToggle = { toggleTranscriptEditor(project, content) },
+                                    showTranscript = false,
+                                )
+                                if (!canRenderTranscript) {
+                                    // No transcript source: disable the toggle rather than open an
+                                    // empty tab.
+                                    chatShellPanel.setToggleEnabled(
+                                        false, PrismBundle.message("chatshell.unavailable")
+                                    )
+                                } else if (show) {
+                                    content.getUserData(TRANSCRIPT_FILE_KEY)?.let { file ->
+                                        FileEditorManager.getInstance(project).openFile(file, false)
+                                        chatShellPanel.setTranscriptVisibleExternally(true)
+                                    }
+                                }
+                            }
+
+                            // Migrate this tab's hosting when the setting flips, preserving whether
+                            // the transcript is currently displayed. The terminal/toolbar stay put,
+                            // so the running session is undisturbed.
+                            val rehost = fun(toEditor: Boolean) {
+                                if (toEditor == hostingInEditor) return
+                                val wasShown = chatShellPanel.isTranscriptVisible()
+                                if (toEditor) {
+                                    // split -> editor: detach the pane (removes the view from the UI)
+                                    // before disposing its browser, then re-home to the editor tab.
+                                    buildEditorHosting(show = wasShown)
+                                    teardownSplitStack()
+                                } else {
+                                    // editor -> split: close the editor tab, then render in the pane.
+                                    content.getUserData(TRANSCRIPT_FILE_KEY)?.let { file ->
+                                        val fem = FileEditorManager.getInstance(project)
+                                        if (fem.isFileOpen(file)) fem.closeFile(file)
+                                    }
+                                    content.putUserData(TRANSCRIPT_FILE_KEY, null)
+                                    buildSplitStack(show = wasShown)
+                                }
+                                hostingInEditor = toEditor
+                            }
+
+                            if (inEditor) buildEditorHosting(show = false)
+                            else buildSplitStack(show = chatShellPanel.isTranscriptVisible())
+                            content.putUserData(REHOST_KEY, rehost)
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
                             notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))

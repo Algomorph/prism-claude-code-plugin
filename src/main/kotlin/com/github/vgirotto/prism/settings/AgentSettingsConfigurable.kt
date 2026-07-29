@@ -3,6 +3,7 @@ package com.github.vgirotto.prism.settings
 import com.github.vgirotto.prism.i18n.PrismBundle
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentSettingsState
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.ui.SimpleListCellRenderer
@@ -17,6 +18,22 @@ import com.intellij.ui.dsl.builder.panel as dslPanel
 class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("settings.title")) {
 
     private val settings = AgentSettingsState.getInstance()
+
+    /**
+     * Broadcast a transcript-hosting change so open chats migrate live (Bug fix: the setting used
+     * to take effect only for chats opened afterward). Compares around [BoundConfigurable.apply],
+     * which writes the bound property, and fires only on an actual flip.
+     */
+    override fun apply() {
+        val before = settings.showTranscriptInEditor
+        super.apply()
+        val after = settings.showTranscriptInEditor
+        if (before != after) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(TranscriptHostingListener.TOPIC)
+                .hostingChanged(after)
+        }
+    }
 
     override fun createPanel() = dslPanel {
         group(PrismBundle.message("settings.group.general")) {
