@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.chatshell
 
+import com.github.vgirotto.prism.model.AgentCli
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorLocation
@@ -51,7 +52,10 @@ class TranscriptFileEditor(
     private fun ensureAttached() {
         if (attached || disposed) return
         attached = true
-        controller.attachLive(file.convId)
+        // Codex supplies no session id, so tail the newest rollout for the project (cwd +
+        // recency) with the Codex parser; Claude tails the deterministic <convId>.jsonl.
+        if (file.cli == AgentCli.CODEX) controller.attachLiveCodex()
+        else controller.attachLive(file.convId)
     }
 
     override fun getComponent(): JComponent = view.component
