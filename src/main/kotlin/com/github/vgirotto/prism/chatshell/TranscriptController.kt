@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.chatshell
 
+import com.github.vgirotto.prism.i18n.PrismBundle
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -268,6 +269,9 @@ class TranscriptController(
                     if (awaitingResume && state.messages.none { it.isRenderable }) return@invokeLater
                     clearResumeHint(revert = false)
                     if (paused) { pendingFullRender = true; return@invokeLater }
+                    // The plain-text fallback has no DOM to patch incrementally; re-emit the
+                    // whole mirror instead (setting a text area is cheap).
+                    if (!view.isJcef) { renderFull(); return@invokeLater }
                     val ops = state.messages.filter { it.isRenderable }.map { builder.upsertOp(it) }
                     if (ops.isNotEmpty()) {
                         view.applyDelta(TranscriptDelta(viewEpoch, nextRevision(), ops))
@@ -277,9 +281,26 @@ class TranscriptController(
         }
     }
 
+    /**
+     * Emit the whole visible transcript. IDEs without an embedded browser (Android Studio ships
+     * the JCEF bindings but not the native library) render into a text area instead, where a
+     * delta means nothing — route those to the plain-text renderer or the transcript never
+     * appears at all.
+     */
     private fun renderFull() {
-        view.applyDelta(builder.buildDelta(mirror, viewEpoch, nextRevision()))
+        if (view.isJcef) {
+            view.applyDelta(builder.buildDelta(mirror, viewEpoch, nextRevision()))
+        } else {
+            view.setFallbackText(TranscriptPlainTextRenderer.render(mirror, plainTextLabels()))
+        }
     }
+
+    private fun plainTextLabels() = TranscriptPlainTextRenderer.Labels(
+        thinking = PrismBundle.message("chatshell.disclosure.thinking"),
+        output = PrismBundle.message("chatshell.disclosure.output"),
+        blockedImage = PrismBundle.message("chatshell.blockedImage"),
+        unsupported = PrismBundle.message("chatshell.unsupported"),
+    )
 
     private fun resetMirror(messages: List<TranscriptMessage>) {
         mirror.clear(); mirrorIndex.clear()
