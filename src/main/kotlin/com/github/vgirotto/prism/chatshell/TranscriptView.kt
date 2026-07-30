@@ -21,6 +21,7 @@ import org.cef.handler.CefResourceRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
 import java.awt.BorderLayout
+import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.util.ArrayDeque
 import java.util.Base64
@@ -47,11 +48,17 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
 
     private val root = JPanel(BorderLayout())
 
-    // Swing fallback.
+    // Swing fallback. Monospaced so tool-call JSON and indented sections stay readable.
     private val fallbackArea = JBTextArea().apply {
         isEditable = false; lineWrap = true; wrapStyleWord = true
+        font = Font(Font.MONOSPACED, Font.PLAIN, font.size)
     }
     private val fallbackScroll = JBScrollPane(fallbackArea)
+
+    /** Fallback surface state. Content wins over a status line once there is any, so a late
+     *  `Loading`/`Reconnecting` can't blank an already-rendered transcript. */
+    private var fallbackStatus: String? = null
+    private var fallbackContent: String = ""
 
     // JCEF (built lazily in initialize()).
     private var browser: JBCefBrowser? = null
@@ -123,6 +130,12 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         b.loadHTML(ShellHtmlBuilder.build(theme), ShellHtmlBuilder.shellUrl)
     }
 
+    /**
+     * Apply a delta to the JCEF shell. Deltas patch the shell's DOM, so with no browser there is
+     * nothing to patch — callers must route through [setFallbackText] when [isJcef] is false
+     * (see [TranscriptController]); dropping here is only correct for the window before
+     * [initialize].
+     */
     fun applyDelta(delta: TranscriptDelta) {
         if (disposed || browser == null) return
         ApplicationManager.getApplication().invokeLater {
@@ -208,8 +221,40 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
         "details" to com.github.vgirotto.prism.i18n.PrismBundle.message("chatshell.disclosure.details"),
     )
 
+    /**
+     * Render the transcript into the no-JCEF fallback surface (R3). The controller calls this
+     * instead of [applyDelta] when [isJcef] is false — deltas patch a DOM that does not exist
+     * there, so without this path every rendered message was silently dropped.
+     */
     fun setFallbackText(text: String) {
-        if (browser == null) fallbackArea.text = text
+        if (browser != null) return
+        ApplicationManager.getApplication().invokeLater {
+            if (disposed) return@invokeLater
+            fallbackContent = text
+            renderFallback()
+        }
+    }
+
+    /**
+     * Compose the text area: a one-line notice explaining why this is plain text (the pane is
+     * otherwise an unexplained downgrade), then the transcript, or the current status while
+     * there is nothing to show yet.
+     *
+     * Every append re-renders the whole text (there is no DOM to patch), so follow the tail the
+     * way a chat transcript should — but only while the user is already at the bottom, so
+     * scrolling back through history isn't yanked away by the next turn.
+     */
+    private fun renderFallback() {
+        val notice = com.github.vgirotto.prism.i18n.PrismBundle.message("chatshell.plainTextFallback")
+        val bodyText = fallbackContent.ifEmpty { fallbackStatus.orEmpty() }
+        val bar = fallbackScroll.verticalScrollBar
+        val wasAtBottom = bar.value + bar.visibleAmount >= bar.maximum - AT_BOTTOM_SLACK_PX
+        fallbackArea.text = if (bodyText.isEmpty()) notice else "$notice\n\n$bodyText"
+        if (wasAtBottom) {
+            ApplicationManager.getApplication().invokeLater {
+                if (!disposed) bar.value = bar.maximum
+            }
+        }
     }
 
     fun setState(newState: State) {
@@ -241,7 +286,8 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
             if (disposed) return@invokeLater
             val b = browser
             if (b == null) {
-                fallbackArea.text = text ?: ""
+                fallbackStatus = text
+                renderFallback()
                 return@invokeLater
             }
             if (shellLoaded) b.cefBrowser.executeJavaScript("window.__prismSetStatus(\"$b64\");", ShellHtmlBuilder.shellUrl, 0)
@@ -334,6 +380,9 @@ class TranscriptView(private val parentDisposable: Disposable) : Disposable {
     companion object {
         private const val ACK_TIMEOUT_MS = 4000L
         private const val MAX_COPY_CHARS = 200_000
+
+        /** Treat the fallback area as "scrolled to the bottom" within this many px. */
+        private const val AT_BOTTOM_SLACK_PX = 4
 
         private val SAFE_SCHEME = Regex("^(https?)://", RegexOption.IGNORE_CASE)
         fun isSafeExternalLink(href: String): Boolean = SAFE_SCHEME.containsMatchIn(href)
