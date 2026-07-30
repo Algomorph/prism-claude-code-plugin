@@ -1,0 +1,8 @@
+<!-- Codex session marker. A generic shell-prompt glyph; not the OpenAI wordmark or logo
+     (see the trademark note in plugin.xml). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 40 40">
+  <g fill="none" stroke="#10A37F" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="12,11 22,20 12,29"/>
+    <line x1="24" y1="30" x2="33" y2="30"/>
+  </g>
+</svg>

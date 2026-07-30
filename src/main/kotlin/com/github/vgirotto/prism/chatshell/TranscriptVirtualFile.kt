@@ -19,14 +19,27 @@ import com.intellij.testFramework.LightVirtualFile
  * It is not disk-backed (a temp-scheme [LightVirtualFile]), so the platform cannot resolve it
  * after an IDE restart and will not try to reopen an orphaned transcript tab with no session
  * behind it. [equals]/[hashCode] key on [sessionId] so opening is idempotent even if a fresh
- * instance is handed to `FileEditorManager`.
+ * instance is handed to `FileEditorManager` — and so a [chatName] change cannot strand the file
+ * in the editor manager's maps.
  */
 class TranscriptVirtualFile(
     val sessionId: String,
     val convId: String,
-    val chatName: String,
+    chatName: String,
     val cli: AgentCli,
 ) : LightVirtualFile("$chatName ✓") {
+
+    /**
+     * The chat's display name, which changes when the agent CLI titles or retitles the
+     * conversation. The platform reads a tab's title once, when the editor is created, so
+     * assigning this renames the tab on its next open rather than in place — acceptable because
+     * the toggle that owns this tab closes and reopens it, and because the tool-window tab (the
+     * primary surface) does rename live.
+     */
+    @Volatile
+    var chatName: String = chatName
+
+    override fun getName(): String = "$chatName ✓"
 
     override fun equals(other: Any?): Boolean =
         other is TranscriptVirtualFile && other.sessionId == sessionId

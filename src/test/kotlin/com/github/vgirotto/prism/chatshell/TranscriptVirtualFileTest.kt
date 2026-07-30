@@ -36,6 +36,18 @@ class TranscriptVirtualFileTest {
     }
 
     @Test
+    fun `renaming the chat renames the tab, without disturbing identity`() {
+        val file = TranscriptVirtualFile("s1", "conv-1", "Chat #1", AgentCli.CLAUDE)
+        val identity = file.hashCode()
+
+        file.chatName = "Diagnose missing transcript"
+
+        assertEquals("Diagnose missing transcript ✓", file.name)
+        assertEquals(identity, file.hashCode())
+        assertTrue(TranscriptVirtualFile.matches(file, "s1"))
+    }
+
+    @Test
     fun `matches only its own session id`() {
         val file = TranscriptVirtualFile("s7", "conv", "Chat #7", AgentCli.CODEX)
         assertTrue(TranscriptVirtualFile.matches(file, "s7"))

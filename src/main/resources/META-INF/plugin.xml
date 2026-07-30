@@ -132,6 +132,8 @@
         <!-- Transcript editor tab (transcript-in-editor mode) -->
         <fileEditorProvider
             implementation="com.github.vgirotto.prism.chatshell.TranscriptFileEditorProvider"/>
+        <fileIconProvider
+            implementation="com.github.vgirotto.prism.chatshell.TranscriptFileIconProvider"/>
 
         <!-- Settings -->
         <projectConfigurable
