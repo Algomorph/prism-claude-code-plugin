@@ -31,10 +31,10 @@ class TranscriptVirtualFile(
 
     /**
      * The chat's display name, which changes when the agent CLI titles or retitles the
-     * conversation. The platform reads a tab's title once, when the editor is created, so
-     * assigning this renames the tab on its next open rather than in place — acceptable because
-     * the toggle that owns this tab closes and reopens it, and because the tool-window tab (the
-     * primary surface) does rename live.
+     * conversation. The platform reads a tab's title when the editor is created and caches it, so
+     * assigning this is only half the rename: the writer must also ask the editor manager to
+     * re-read the presentation (see [TranscriptTabTitle]). Without that nudge the new name still
+     * appears the next time the tab is opened.
      */
     @Volatile
     var chatName: String = chatName

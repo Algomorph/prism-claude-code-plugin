@@ -700,23 +700,25 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
         val watcher = ChatNameWatcher(source)
         Disposer.register(parentDisposable, watcher)
-        watcher.start { name -> applyChatName(content, cli, name) }
+        watcher.start { name -> applyChatName(project, content, cli, name) }
     }
 
     /**
      * Put [name] on the chat tab: the clipped form as the label, the full text plus the agent it
      * belongs to as the tooltip (a truncated title is only useful if the whole one is reachable).
      *
-     * The transcript editor tab is renamed too, but the platform reads a tab's title when the
-     * editor opens, so a rename lands the next time the transcript is opened rather than under a
-     * tab that is already showing — see [com.github.vgirotto.prism.chatshell.TranscriptVirtualFile].
+     * The transcript editor tab carries the same name, so it is renamed in step.
      */
-    private fun applyChatName(content: Content, cli: AgentCli, name: ChatName) {
+    private fun applyChatName(project: Project, content: Content, cli: AgentCli, name: ChatName) {
         val label = name.display()
         content.displayName = label
         content.description = PrismBundle.message("toolwindow.tab.tooltip", cli.displayName(), name.text)
         content.putUserData(CHAT_NAME_KEY, label)
-        content.getUserData(TRANSCRIPT_FILE_KEY)?.chatName = label
+        content.getUserData(TRANSCRIPT_FILE_KEY)?.let { file ->
+            file.chatName = label
+            // Renaming the file is only half of it — the open tab caches the old title.
+            com.github.vgirotto.prism.chatshell.TranscriptTabTitle.refresh(project, file)
+        }
     }
 
     /**
