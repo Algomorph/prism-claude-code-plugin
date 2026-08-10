@@ -25,7 +25,7 @@ enum class ChangeStatus {
 }
 
 /**
- * Represents all changes from a single Claude interaction.
+ * Represents all changes from a single agent interaction.
  */
 data class InteractionDiff(
     val interactionIndex: Int,

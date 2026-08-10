@@ -1,7 +1,7 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -10,10 +10,10 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.wm.ToolWindowManager
 
 /**
- * Context menu actions for "Ask Claude" submenu in the editor.
+ * Context menu actions for the "Ask Agent" submenu in the editor.
  * Each subclass sends the selection with a specific prompt prefix.
  */
-abstract class AskClaudeAction(private val prompt: String) : AnAction() {
+abstract class AskAgentAction(private val prompt: String) : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -28,7 +28,7 @@ abstract class AskClaudeAction(private val prompt: String) : AnAction() {
             if (lineRef != null) {
                 "$prompt $lineRef"
             } else {
-                contextProvider.formatSelectionForClaude(selectedText, file, prompt)
+                contextProvider.formatSelectionForAgent(selectedText, file, prompt)
             }
         } else if (file != null) {
             "$prompt ${contextProvider.formatFileReference(file)}"
@@ -36,7 +36,7 @@ abstract class AskClaudeAction(private val prompt: String) : AnAction() {
             return
         }
 
-        val processManager = ClaudeProcessManager.getInstance(project)
+        val processManager = AgentProcessManager.getInstance(project)
         processManager.sendText(message + "\n")
 
         ToolWindowManager.getInstance(project)
@@ -51,8 +51,8 @@ abstract class AskClaudeAction(private val prompt: String) : AnAction() {
     }
 }
 
-class ExplainCodeAction : AskClaudeAction(ClaudeBundle.message("action.explain"))
-class ReviewCodeAction : AskClaudeAction(ClaudeBundle.message("action.review"))
-class FixCodeAction : AskClaudeAction(ClaudeBundle.message("action.fix"))
-class GenerateTestsAction : AskClaudeAction(ClaudeBundle.message("action.tests"))
-class RefactorCodeAction : AskClaudeAction(ClaudeBundle.message("action.refactor"))
+class ExplainCodeAction : AskAgentAction(PrismBundle.message("action.explain"))
+class ReviewCodeAction : AskAgentAction(PrismBundle.message("action.review"))
+class FixCodeAction : AskAgentAction(PrismBundle.message("action.fix"))
+class GenerateTestsAction : AskAgentAction(PrismBundle.message("action.tests"))
+class RefactorCodeAction : AskAgentAction(PrismBundle.message("action.refactor"))

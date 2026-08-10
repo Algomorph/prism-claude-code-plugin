@@ -70,8 +70,8 @@ class DiffViewService(private val project: Project) {
             "$prefix ${entry.path}",
             leftContent,
             rightContent,
-            "Before Claude",
-            "After Claude"
+            "Before agent",
+            "After agent"
         )
     }
 

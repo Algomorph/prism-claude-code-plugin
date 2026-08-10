@@ -38,6 +38,19 @@ dependencies {
 
 intellijPlatform {
     pluginVerification {
+        // Stated explicitly instead of taking the plugin's default, which also fails on
+        // DEPRECATED_API_USAGES. That default turns the build red the moment JetBrains
+        // deprecates anything in an EAP — outside this repo's control, and the reason the
+        // verifier step was muted with continue-on-error in the first place. These levels
+        // mean the plugin is actually broken for a user, so the step can gate for real.
+        failureLevel.set(
+            listOf(
+                org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+                org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+                org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
+                org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
+            )
+        )
         ides {
             recommended()
         }

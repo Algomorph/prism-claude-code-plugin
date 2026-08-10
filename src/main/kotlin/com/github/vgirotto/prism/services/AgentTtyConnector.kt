@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.services
 
+import com.github.vgirotto.prism.model.AgentCli
 import com.jediterm.core.util.TermSize
 import com.jediterm.terminal.ProcessTtyConnector
 import com.pty4j.PtyProcess
@@ -7,23 +8,44 @@ import com.pty4j.WinSize
 import java.nio.charset.Charset
 
 /**
- * TtyConnector that wraps a PtyProcess for Claude Code.
+ * TtyConnector that wraps a PtyProcess for an agent CLI.
  * Intercepts writes to detect when the user sends a message (Enter key),
- * and monitors reads to detect when Claude finishes responding.
- * Parses initial output to detect model and effort level.
+ * and monitors reads to detect when the agent finishes responding.
+ * Parses initial output to detect model and effort/reasoning level using
+ * a CLI-specific [BannerParser].
  */
-class ClaudeTtyConnector(
+class AgentTtyConnector(
     process: Process,
     charset: Charset,
     private val onUserInput: (() -> Unit)? = null,
     private val onOutputActivity: (() -> Unit)? = null,
     private val onStartupParsed: ((model: String, effort: String) -> Unit)? = null,
+    private val bannerParser: BannerParser = ClaudeBannerParser,
+    private val writeQueue: ((() -> Unit) -> Unit)? = null,
 ) : ProcessTtyConnector(process, charset) {
+
+    constructor(
+        process: Process,
+        charset: Charset,
+        cli: AgentCli,
+        onUserInput: (() -> Unit)? = null,
+        onOutputActivity: (() -> Unit)? = null,
+        onStartupParsed: ((model: String, effort: String) -> Unit)? = null,
+        writeQueue: ((() -> Unit) -> Unit)? = null,
+    ) : this(
+        process = process,
+        charset = charset,
+        onUserInput = onUserInput,
+        onOutputActivity = onOutputActivity,
+        onStartupParsed = onStartupParsed,
+        bannerParser = BannerParser.forCli(cli),
+        writeQueue = writeQueue,
+    )
 
     @Volatile
     private var lastOutputTime = 0L
 
-    /** Buffer initial output to parse model/effort from Claude startup banner */
+    /** Buffer initial output to parse model/effort from the agent's startup banner */
     private val startupBuffer = StringBuilder()
 
     @Volatile
@@ -44,15 +66,31 @@ class ClaudeTtyConnector(
         if (bytes.any { it == '\r'.code.toByte() || it == '\n'.code.toByte() }) {
             onUserInput?.invoke()
         }
-        super.write(bytes)
+        queued { writeDirect(bytes) }
     }
 
     override fun write(string: String) {
         if (string.contains('\r') || string.contains('\n')) {
             onUserInput?.invoke()
         }
-        super.write(string)
+        queued { writeDirect(string) }
     }
+
+    /**
+     * Hands [write] to the session's PTY write queue when there is one, so a typed
+     * character cannot land between the body and the Enter of a staged Codex sequence.
+     * Keystrokes typed during a sequence are held until it finishes instead — a prompt
+     * that submits a beat late beats one that submits a keystroke early.
+     */
+    private fun queued(write: () -> Unit) {
+        val queue = writeQueue
+        if (queue == null) write() else queue(write)
+    }
+
+    // super calls cannot be made from inside a lambda, so the queued write goes through
+    // these instead.
+    private fun writeDirect(bytes: ByteArray) = super.write(bytes)
+    private fun writeDirect(string: String) = super.write(string)
 
     override fun read(buf: CharArray, offset: Int, length: Int): Int {
         val bytesRead = super.read(buf, offset, length)
@@ -82,7 +120,7 @@ class ClaudeTtyConnector(
     /**
      * Returns true if the buffer contains printable text (not just escape sequences).
      * Cursor blink is typically pure CSI sequences (\e[?25h / \e[?25l) with no printable chars.
-     * Real Claude output always contains printable characters (text, code, etc.).
+     * Real agent output always contains printable characters (text, code, etc.).
      */
     private fun containsPrintableText(buf: CharArray, offset: Int, length: Int): Boolean {
         var i = offset
@@ -128,34 +166,11 @@ class ClaudeTtyConnector(
     }
 
     private fun tryParseModel() {
-        // Strip ALL escape sequences and control characters
-        val raw = startupBuffer.toString()
-        val text = raw
-            .replace(Regex("\u001B\\[[0-9;]*[a-zA-Z]"), "")      // CSI: \e[...m
-            .replace(Regex("\u001B\\][^\u0007\u001B]*[\u0007]"), "") // OSC: \e]...BEL
-            .replace(Regex("\u001B[^\\[\\]]."), "")                // Other 2-char escapes
-            .replace(Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]"), "") // Control chars
-
-        var model = ""
-        var effort = ""
-
-        // Parse model: "Opus 4.6" / "Sonnet 4.6" / "Haiku 4.5"
-        val modelRegex = Regex("(Opus|Sonnet|Haiku)\\s+[\\d.]+", RegexOption.IGNORE_CASE)
-        modelRegex.find(text)?.let { match ->
-            model = match.value.split("\\s+".toRegex())[0].lowercase()
-        }
-
-        // Parse effort: "with X effort"
-        val effortRegex = Regex("with\\s+(\\w+)\\s+effort", RegexOption.IGNORE_CASE)
-        effortRegex.find(text)?.let { match ->
-            effort = match.groupValues[1].lowercase()
-        }
-
-        if (model.isNotEmpty() || effort.isNotEmpty()) {
-            startupParsed = true
-            startupBuffer.clear()
-            onStartupParsed?.invoke(model, effort)
-        }
+        val parsed = bannerParser.parse(startupBuffer.toString()) ?: return
+        val (model, effort) = parsed
+        startupParsed = true
+        startupBuffer.clear()
+        onStartupParsed?.invoke(model, effort)
     }
 
     fun getIdleTimeMs(): Long {

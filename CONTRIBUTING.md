@@ -1,4 +1,4 @@
-# Contributing to Prism — IDE Companion for Claude Code
+# Contributing to Prism — IDE Companion for Claude Code and Codex
 
 Thank you for your interest in contributing. This document explains how to get started and what is expected from contributors.
 

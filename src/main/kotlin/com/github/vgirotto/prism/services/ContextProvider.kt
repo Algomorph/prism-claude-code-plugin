@@ -51,7 +51,7 @@ class ContextProvider(private val project: Project) {
         FileEditorManager.getInstance(project).openFiles.toList()
 
     /**
-     * Formats a file reference using Claude Code's @ syntax.
+     * Formats a file reference using the agent's @ syntax.
      */
     fun formatFileReference(file: VirtualFile): String =
         "@${relativePath(file)}"
@@ -72,10 +72,10 @@ class ContextProvider(private val project: Project) {
     }
 
     /**
-     * Formats selected code with file context for sending to Claude.
+     * Formats selected code with file context for sending to the agent.
      * Used as fallback when no file is available (e.g. scratch files).
      */
-    fun formatSelectionForClaude(text: String, file: VirtualFile?, prompt: String? = null): String {
+    fun formatSelectionForAgent(text: String, file: VirtualFile?, prompt: String? = null): String {
         val builder = StringBuilder()
         if (prompt != null) {
             builder.append(prompt)

@@ -26,12 +26,14 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      # Task names are the IntelliJ Platform Gradle Plugin 2.x ones: verifyPluginStructure
+      # checks the descriptors and archive layout, verifyPlugin is the Plugin Verifier CLI
+      # that 1.x called runPluginVerifier.
       - name: Verify plugin structure
-        run: ./gradlew verifyPlugin
+        run: ./gradlew verifyPluginStructure
 
       - name: Check plugin compatibility
-        run: ./gradlew runPluginVerifier
-        continue-on-error: true
+        run: ./gradlew verifyPlugin
 
       - name: Upload verification reports
         if: always()

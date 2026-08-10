@@ -36,7 +36,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
      * when multiple sessions trigger snapshots simultaneously.
      */
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "ClaudeSnapshotWorker").apply { isDaemon = true }
+        Thread(r, "AgentSnapshotWorker").apply { isDaemon = true }
     }
 
     /** Hash index: relativePath → sha256. Kept in memory (~100 bytes/entry) */
@@ -82,7 +82,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
         ExclusionPatternMatcher.compile(emptyList())
 
     private fun getExcludePatterns(): List<String> =
-        ClaudeSettingsState.getInstance().getExcludedPatterns()
+        AgentSettingsState.getInstance().getExcludedPatterns()
 
     private fun userMatcher(): ExclusionPatternMatcher.Compiled = synchronized(patternCacheLock) {
         val patterns = getExcludePatterns()
@@ -94,7 +94,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
     }
 
     private fun getMaxFileSize(): Long =
-        ClaudeSettingsState.getInstance().maxFileSizeKb.toLong() * 1024
+        AgentSettingsState.getInstance().maxFileSizeKb.toLong() * 1024
 
     /**
      * Takes a snapshot, serialized through the executor.
@@ -115,7 +115,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
     /**
      * Refreshes the project's VFS from disk, then computes the diff.
      *
-     * Claude edits files through the terminal, outside the IDE, and IntelliJ doesn't detect those
+     * The agent edits files through the terminal, outside the IDE, and IntelliJ doesn't detect those
      * external changes on its own. The synchronous VFS refresh re-scans the disk, firing the file
      * change listener so [changedPaths] is populated (newly created files are only discovered this
      * way) and open editors reload with the new content before the diff is computed.
@@ -245,7 +245,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
         val basePath = project.basePath ?: return
         val baseDir = File(basePath)
         if (!baseDir.isDirectory) return
-        val tempDir = Files.createTempDirectory("claude-snapshot-").toFile()
+        val tempDir = Files.createTempDirectory("agent-snapshot-").toFile()
         val hashes = mutableMapOf<String, String>()
         fullCopy(baseDir, basePath, tempDir, hashes)
         snapshotDir = tempDir
@@ -262,14 +262,14 @@ class FileSnapshotService(private val project: Project) : Disposable {
 
         try {
             LocalHistory.getInstance().putSystemLabel(
-                project, "Claude Code — before interaction #$interactionCounter"
+                project, "Agent — before interaction #$interactionCounter"
             )
         } catch (e: Exception) {
             log.debug("Failed to place Local History label", e)
         }
 
         if (snapshotDir == null || !snapshotDir!!.exists()) {
-            val tempDir = Files.createTempDirectory("claude-snapshot-").toFile()
+            val tempDir = Files.createTempDirectory("agent-snapshot-").toFile()
             val hashes = mutableMapOf<String, String>()
             fullCopy(baseDir, basePath, tempDir, hashes)
             snapshotDir = tempDir

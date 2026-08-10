@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -26,10 +26,10 @@ class SendSelectionAction : AnAction() {
         } else {
             selectedText + " "
         }
-        val processManager = ClaudeProcessManager.getInstance(project)
+        val processManager = AgentProcessManager.getInstance(project)
         processManager.sendText(message)
 
-        // Activate the Claude tool window
+        // Activate the agent tool window
         ToolWindowManager.getInstance(project)
             .getToolWindow("Prism")
             ?.activate(null)

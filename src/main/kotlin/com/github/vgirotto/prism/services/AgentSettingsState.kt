@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.services
 
+import com.github.vgirotto.prism.model.AgentCli
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -11,10 +12,12 @@ import com.intellij.openapi.components.Storage
     name = "ClaudeCodeWrapperSettings",
     storages = [Storage("ClaudeCodeWrapper.xml")]
 )
-class ClaudeSettingsState : PersistentStateComponent<ClaudeSettingsState.State> {
+class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
 
     data class State(
         var claudePath: String = "claude",
+        var codexPath: String = "codex",
+        var defaultCli: AgentCli = AgentCli.DEFAULT,
         var autoStartOnOpen: Boolean = true,
         var shellPath: String = System.getenv("SHELL") ?: "/bin/zsh",
         var showChangesOnStartup: Boolean = true,
@@ -35,6 +38,19 @@ class ClaudeSettingsState : PersistentStateComponent<ClaudeSettingsState.State> 
     var claudePath: String
         get() = state.claudePath
         set(value) { state.claudePath = value }
+
+    var codexPath: String
+        get() = state.codexPath
+        set(value) { state.codexPath = value }
+
+    var defaultCli: AgentCli
+        get() = state.defaultCli
+        set(value) { state.defaultCli = value }
+
+    fun cliPath(cli: AgentCli): String = when (cli) {
+        AgentCli.CLAUDE -> claudePath
+        AgentCli.CODEX -> codexPath
+    }
 
     var autoStartOnOpen: Boolean
         get() = state.autoStartOnOpen
@@ -68,7 +84,7 @@ class ClaudeSettingsState : PersistentStateComponent<ClaudeSettingsState.State> 
         excludedPatterns.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
     companion object {
-        fun getInstance(): ClaudeSettingsState =
-            ApplicationManager.getApplication().getService(ClaudeSettingsState::class.java)
+        fun getInstance(): AgentSettingsState =
+            ApplicationManager.getApplication().getService(AgentSettingsState::class.java)
     }
 }

@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.services.ClaudeProcessManager
+import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.ContextProvider
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -19,7 +19,7 @@ class InsertFileReferenceAction : AnAction() {
         val contextProvider = ContextProvider.getInstance(project)
         val reference = contextProvider.formatFileReference(file) + " "
 
-        val processManager = ClaudeProcessManager.getInstance(project)
+        val processManager = AgentProcessManager.getInstance(project)
         processManager.sendText(reference)
 
         ToolWindowManager.getInstance(project)

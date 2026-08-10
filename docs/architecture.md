@@ -1,47 +1,62 @@
-# Architecture — Prism: IDE Companion for Claude Code
+# Architecture — Prism: IDE Companion for Claude Code and Codex
+
+Prism is agent-agnostic: a single set of tool-window, process, and diff classes
+drives every supported CLI, with the per-CLI differences (history location,
+binary validation, startup banner) isolated behind small interfaces. The
+`AgentCli` enum (`CLAUDE`, `CODEX`) selects the right implementation at runtime.
 
 ## 1. Project Structure
 
 ```
 src/main/kotlin/com/github/vgirotto/prism/
 ├── actions/               # Keyboard shortcuts and menu actions
-│   ├── OpenClaudeAction.kt
+│   ├── OpenAgentAction.kt
 │   ├── ShowDiffAction.kt
 │   ├── SendSelectionAction.kt
 │   ├── InsertFileReferenceAction.kt
-│   └── AskClaudeAction.kt
+│   ├── MentionFolderAction.kt
+│   ├── NewSessionAction.kt
+│   └── AskAgentAction.kt
 │
 ├── listeners/             # Event listeners
 │   └── FileChangeListener.kt (VFS monitoring)
 │
 ├── model/                 # Data classes
-│   ├── ClaudeSession.kt
+│   ├── AgentCli.kt (CLAUDE / CODEX)
+│   ├── AgentSession.kt
 │   ├── FileSnapshot.kt
 │   ├── ConversationEntry.kt
 │   └── PromptTemplate.kt
 │
 ├── services/              # Core services
-│   ├── ClaudeProcessManager.kt (Multi-session, PTY, Health Monitor)
-│   ├── ClaudeValidationService.kt (Error handling)
-│   ├── FileSnapshotService.kt (Incremental snapshots)
-│   ├── DiffViewService.kt (Native IDE diff)
+│   ├── AgentProcessManager.kt (Multi-session, PTY, Health Monitor)
+│   ├── AgentTtyConnector.kt
+│   ├── AgentSettingsState.kt (Persistence)
+│   ├── CliBinaryLocator.kt (Shared PATH/binary lookup)
+│   ├── ClaudeValidationService.kt / CodexValidationService.kt
+│   ├── BannerParser.kt (per-CLI startup banner parsing)
+│   ├── HistoryReader.kt (interface)
+│   ├── ClaudeHistoryReader.kt / CodexHistoryReader.kt
 │   ├── ConversationHistoryService.kt
-│   ├── ClaudeSettingsState.kt (Persistence)
-│   ├── ContextProvider.kt
-│   └── ClaudeTtyConnector.kt
+│   ├── FileSnapshotService.kt (Incremental snapshots)
+│   ├── ExclusionPatternMatcher.kt
+│   ├── DiffViewService.kt (Native IDE diff)
+│   └── ContextProvider.kt
 │
 ├── settings/              # Settings UI
-│   └── ClaudeSettingsConfigurable.kt
+│   └── AgentSettingsConfigurable.kt
 │
 ├── toolwindow/            # Main UI
-│   ├── ClaudeToolWindowFactory.kt
-│   ├── ClaudeToolbar.kt
-│   ├── ClaudeStatusBarWidget.kt
+│   ├── AgentToolWindowFactory.kt
+│   ├── AgentToolbar.kt
+│   ├── ToolbarItems.kt (per-CLI toolbar gating)
+│   ├── AgentStatusBarWidget.kt
+│   ├── NewSessionPopupAction.kt
 │   ├── DiffPanel.kt
 │   └── HistoryPanel.kt
 │
 └── i18n/                  # Internationalization
-    └── ClaudeBundle.kt
+    └── PrismBundle.kt
 ```
 
 ## 2. Compatibility
@@ -59,7 +74,7 @@ All action classes must override `getActionUpdateThread()` — this is mandatory
 
 ## 3. Diff View Architecture
 
-The diff system captures a snapshot of the project before each Claude interaction and computes the delta after Claude finishes writing to disk.
+The diff system captures a snapshot of the project before each agent interaction and computes the delta after the agent finishes writing to disk.
 
 ```
   ┌──────────────────────────────────────────────────────────────┐
@@ -69,7 +84,7 @@ The diff system captures a snapshot of the project before each Claude interactio
                  │
                  ▼
   ┌──────────────────────────────┐     ┌───────────────────────┐
-  │      takeSnapshot()          │     │   /tmp/claude-snap/   │
+  │      takeSnapshot()          │     │   /tmp/agent-snap/    │
   │                              │────▶│   ├── src/main.kt     │
   │  1. Local History label      │     │   ├── README.md       │
   │  2. First: full copy to temp │     │   └── ...             │
@@ -82,7 +97,7 @@ The diff system captures a snapshot of the project before each Claude interactio
                  │  (~100 bytes × N files)
                  ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │               Claude Code CLI modifies files                 │
+  │                  Agent CLI modifies files                    │
   │               (external process, writes to disk)             │
   └──────────────┬───────────────────────────────────────────────┘
                  │
@@ -98,7 +113,7 @@ The diff system captures a snapshot of the project before each Claude interactio
   │                    computeDiff()                              │
   │                                                              │
   │  For each file in changedPaths + snapshot index:             │
-  │    original = read from /tmp/claude-snap/{path}              │
+  │    original = read from /tmp/agent-snap/{path}               │
   │    current  = read from project/{path}                       │
   │    if hash differs → FileDiffEntry(MODIFIED, original, cur)  │
   │    if file missing → FileDiffEntry(DELETED, original, null)  │
@@ -107,12 +122,12 @@ The diff system captures a snapshot of the project before each Claude interactio
                  │
                  ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │              Claude Changes Panel                            │
+  │              Agent Changes Panel                             │
   │  ┌────────────────────────────┐  ┌───────────────────────┐  │
   │  │ ~ src/main.kt              │  │ DiffManager.showDiff() │  │
   │  │ + new_file.kt              │  │ (native side-by-side)  │  │
   │  │ - old_file.kt              │  │                       │  │
-  │  │ [Revert File] [Revert All] │  │ Before Claude | After  │  │
+  │  │ [Revert File] [Revert All] │  │ Before agent | After   │  │
   │  │ ◀ #3 (Last) ▶              │  │                       │  │
   │  └────────────────────────────┘  └───────────────────────┘  │
   └──────────────────────────────────────────────────────────────┘
@@ -122,13 +137,13 @@ The diff system captures a snapshot of the project before each Claude interactio
 
 The snapshot mechanism is designed to minimize memory usage while keeping diff computation fast and accurate.
 
-**On first interaction**, `FileSnapshotService` copies the entire project tree to a temporary directory (`/tmp/claude-snap/`). A SHA-256 hash is computed for each file and stored in a lightweight in-memory index (approximately 100 bytes per file).
+**On first interaction**, `FileSnapshotService` copies the entire project tree to a temporary directory (`/tmp/agent-snap/`). A SHA-256 hash is computed for each file and stored in a lightweight in-memory index (approximately 100 bytes per file).
 
 Snapshot exclusions are applied before files are copied. The exclusion list accepts comma-separated names and wildcard patterns such as `cmake-build-*` or `**/generated`.
 
 **On subsequent interactions**, only files whose paths were touched since the last snapshot (tracked via `BulkFileListener`) are re-copied and re-hashed. This incremental strategy avoids redundant I/O on large projects.
 
-**At diff time**, `computeDiff()` compares the current file content against the snapshot copy using the hash index as a fast pre-filter. Only files with a differing hash are read in full and presented in the Claude Changes Panel. The native IDE `DiffManager` renders a side-by-side view labeled "Before Claude" and "After".
+**At diff time**, `computeDiff()` compares the current file content against the snapshot copy using the hash index as a fast pre-filter. Only files with a differing hash are read in full and presented in the Agent Changes Panel. The native IDE `DiffManager` renders a side-by-side view labeled "Before agent" and "After".
 
 Each interaction is also tagged as a Local History label, providing an independent recovery path outside of the plugin's own revert mechanism.
 

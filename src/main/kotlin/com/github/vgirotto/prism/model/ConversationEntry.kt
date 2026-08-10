@@ -3,7 +3,7 @@ package com.github.vgirotto.prism.model
 import java.time.Instant
 
 /**
- * Represents a single conversation session from Claude Code history.
+ * Represents a single conversation session from an agent's history.
  */
 data class ConversationSummary(
     val sessionId: String,

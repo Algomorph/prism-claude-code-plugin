@@ -1,8 +1,11 @@
 package com.github.vgirotto.prism.toolwindow
 
-import com.github.vgirotto.prism.i18n.ClaudeBundle
-import com.github.vgirotto.prism.services.ClaudeProcessManager
-import com.github.vgirotto.prism.services.ClaudeSettingsState
+import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.model.AgentCli
+import com.github.vgirotto.prism.services.AgentProcessManager
+import com.github.vgirotto.prism.services.AgentSettingsState
+import com.github.vgirotto.prism.services.ClaudeValidationService
+import com.github.vgirotto.prism.services.CodexValidationService
 import com.github.vgirotto.prism.services.FileSnapshotService
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
@@ -45,13 +48,13 @@ import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.SwingConstants
 
-class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
+class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
-    private val log = Logger.getInstance(ClaudeToolWindowFactory::class.java)
+    private val log = Logger.getInstance(AgentToolWindowFactory::class.java)
 
     companion object {
-        val SESSION_ID_KEY = Key.create<String>("ClaudeSessionId")
-        val DIFF_PANEL_KEY = Key.create<DiffPanel>("ClaudeDiffPanel")
+        val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
+        val DIFF_PANEL_KEY = Key.create<DiffPanel>("AgentDiffPanel")
 
         private var sessionCounter = 0
 
@@ -68,13 +71,13 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         resetCounter()
 
-        var changesVisible = ClaudeSettingsState.getInstance().showChangesOnStartup
+        var changesVisible = AgentSettingsState.getInstance().showChangesOnStartup
         var lastProportion = 0.65f
 
         // Toggle action for the Changes panel
         val toggleChangesAction = object : ToggleAction(
-            ClaudeBundle.message("toolwindow.toggle.changes"),
-            if (changesVisible) ClaudeBundle.message("toolwindow.hide.changes") else ClaudeBundle.message("toolwindow.show.changes"),
+            PrismBundle.message("toolwindow.toggle.changes"),
+            if (changesVisible) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes"),
             AllIcons.Actions.PreviewDetails
         ), DumbAware {
             override fun isSelected(e: AnActionEvent): Boolean = changesVisible
@@ -95,20 +98,16 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
 
             override fun update(e: AnActionEvent) {
                 super.update(e)
-                e.presentation.text = if (changesVisible) ClaudeBundle.message("toolwindow.hide.changes") else ClaudeBundle.message("toolwindow.show.changes")
+                e.presentation.text = if (changesVisible) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes")
             }
         }
 
-        val newSessionAction = object : DumbAwareAction(
-            ClaudeBundle.message("toolwindow.new.session"), ClaudeBundle.message("toolwindow.new.session.desc"), AllIcons.General.Add
-        ) {
-            override fun actionPerformed(e: AnActionEvent) {
-                createSessionTab(project, toolWindow, changesVisible)
-            }
-        }
+        val newSessionAction = NewSessionPopupAction(
+            createSessionTab = { cli -> createSessionTab(project, toolWindow, changesVisible, cli) },
+        )
 
         val historyAction = object : DumbAwareAction(
-            ClaudeBundle.message("toolwindow.history"), ClaudeBundle.message("toolwindow.history.desc"), AllIcons.Vcs.History
+            PrismBundle.message("toolwindow.history"), PrismBundle.message("toolwindow.history.desc"), AllIcons.Vcs.History
         ) {
             override fun actionPerformed(e: AnActionEvent) {
                 showHistoryTab(project, toolWindow)
@@ -122,19 +121,19 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun selectionChanged(event: ContentManagerEvent) {
                 val sessionId = event.content.getUserData(SESSION_ID_KEY)
                 if (sessionId != null) {
-                    ClaudeProcessManager.getInstance(project).setActiveSession(sessionId)
+                    AgentProcessManager.getInstance(project).setActiveSession(sessionId)
                 }
                 event.content.getUserData(DIFF_PANEL_KEY)?.refreshDiff()
             }
 
             override fun contentRemoved(event: ContentManagerEvent) {
                 val sessionId = event.content.getUserData(SESSION_ID_KEY) ?: return
-                ClaudeProcessManager.getInstance(project).destroySession(sessionId)
+                AgentProcessManager.getInstance(project).destroySession(sessionId)
             }
         })
 
         // Idle listener: compute one new diff off the UI thread, then show it on all DiffPanels.
-        ClaudeProcessManager.getInstance(project).addIdleListener {
+        AgentProcessManager.getInstance(project).addIdleListener {
             val panels = (0 until toolWindow.contentManager.contentCount).mapNotNull { i ->
                 toolWindow.contentManager.getContent(i)?.getUserData(DIFF_PANEL_KEY)
             }
@@ -152,12 +151,12 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         // Process death listener: notify when session dies unexpectedly
-        ClaudeProcessManager.getInstance(project).addProcessDeathListener { sessionId, sessionName ->
+        AgentProcessManager.getInstance(project).addProcessDeathListener { sessionId, sessionName ->
             log.warn("Session process died: $sessionName [$sessionId]")
             NotificationGroupManager.getInstance()
                 .getNotificationGroup("Prism")
                 .createNotification(
-                    "Claude Code",
+                    PrismBundle.message("notification.title"),
                     "Session '$sessionName' ended unexpectedly.\n\nClick 'Restart' to start a new session.",
                     NotificationType.WARNING
                 )
@@ -165,7 +164,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         // Create the first session tab
-        if (ClaudeSettingsState.getInstance().autoStartOnOpen) {
+        if (AgentSettingsState.getInstance().autoStartOnOpen) {
             createSessionTab(project, toolWindow, changesVisible)
         }
     }
@@ -178,25 +177,69 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         project: Project,
         toolWindow: ToolWindow,
         changesVisible: Boolean,
+        cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
     ) {
-        // Validate Claude is available before creating UI
-        val validator = com.github.vgirotto.prism.services.ClaudeValidationService.getInstance()
-        if (!validator.isClaudeAvailable()) {
-            log.warn("Claude CLI not found in PATH")
-            showClaudeNotFoundError(project, toolWindow)
-            return
+        // Validate the requested CLI is available before creating UI, using the
+        // user-configured path so custom binary locations are honored. The check
+        // stats the filesystem and reads the login-shell environment, which can
+        // block while the platform loads it, and IntelliJ forbids blocking I/O on
+        // the EDT, so resolve it on a pooled thread and build the tab UI back on
+        // the EDT once the CLI is confirmed present.
+        val settings = AgentSettingsState.getInstance()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // Keep the resolved absolute path, not just a yes/no: the session
+            // launches this exact binary instead of re-resolving the configured
+            // string through the shell's own PATH.
+            val preflightStartedAtNanos = System.nanoTime()
+            val resolvedBinary = when (cli) {
+                AgentCli.CLAUDE ->
+                    ClaudeValidationService.getInstance().getClaudePath(settings.claudePath)
+                AgentCli.CODEX ->
+                    CodexValidationService.getInstance().getCodexPath(settings.codexPath)
+            }
+            val preflightMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - preflightStartedAtNanos)
+            log.info(
+                "timing: ${cli.name.lowercase()} preflight resolve took $preflightMs ms" +
+                    " → ${resolvedBinary ?: "not found"}"
+            )
+            ApplicationManager.getApplication().invokeLater {
+                if (resolvedBinary == null) {
+                    log.warn("${cli.name.lowercase()} CLI not found at configured path or on PATH")
+                    showCliNotFoundError(project, toolWindow, cli)
+                    return@invokeLater
+                }
+                buildSessionTab(project, toolWindow, changesVisible, cli, resolvedBinary)
+            }
         }
+    }
 
-        val disposable = Disposer.newDisposable("ClaudeSession")
+    /**
+     * Builds the tab UI (terminal, toolbar, diff panel) and starts the agent
+     * session. Must run on the EDT; [createSessionTab] performs the off-EDT
+     * availability preflight before invoking this.
+     */
+    private fun buildSessionTab(
+        project: Project,
+        toolWindow: ToolWindow,
+        changesVisible: Boolean,
+        cli: AgentCli,
+        resolvedBinary: String,
+    ) {
+        val disposable = Disposer.newDisposable("AgentSession")
         Disposer.register(toolWindow.disposable, disposable)
 
         try {
             val settingsProvider = JBTerminalSystemSettingsProviderBase()
             val terminalWidget = JBTerminalWidget(project, settingsProvider, disposable)
 
+            // The picker takes focus so the press that closes it never reaches the terminal;
+            // the gate covers the auto-repeat presses that arrive once the popup is gone.
+            EscapeKeyGate(terminalWidget.component, disposable)
+
             val escapeAction = object : DumbAwareAction() {
                 override fun actionPerformed(e: AnActionEvent) {
-                    ClaudeProcessManager.getInstance(project).sendText("\u001B")
+                    log.debug("Escape forwarded to the PTY")
+                    AgentProcessManager.getInstance(project).sendText("\u001B")
                 }
             }
             escapeAction.registerCustomShortcutSet(
@@ -208,7 +251,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             // Shift+Enter sends CSI u escape sequence for newline without submitting
             val shiftEnterAction = object : DumbAwareAction() {
                 override fun actionPerformed(e: AnActionEvent) {
-                    ClaudeProcessManager.getInstance(project).sendText("\u001b[13;2u")
+                    AgentProcessManager.getInstance(project).sendText("\u001b[13;2u")
                 }
             }
             shiftEnterAction.registerCustomShortcutSet(
@@ -234,7 +277,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             for ((keyStroke, sequence) in cliShortcuts) {
                 val action = object : DumbAwareAction() {
                     override fun actionPerformed(e: AnActionEvent) {
-                        ClaudeProcessManager.getInstance(project).sendText(sequence)
+                        AgentProcessManager.getInstance(project).sendText(sequence)
                     }
                 }
                 action.registerCustomShortcutSet(
@@ -248,7 +291,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             // the PTY and the X11 clipboard isn't reliably readable by the child
             // process, so we paste from the JVM clipboard ourselves. On macOS and
             // Windows the native passthrough works well (Cmd+V pastes text, Ctrl+V
-            // pastes images via the Claude CLI), so we leave it untouched.
+            // pastes images via the agent CLI), so we leave it untouched.
             val pasteAction = if (SystemInfo.isLinux) {
                 object : DumbAwareAction() {
                     override fun actionPerformed(e: AnActionEvent) {
@@ -258,7 +301,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             } else {
                 object : DumbAwareAction() {
                     override fun actionPerformed(e: AnActionEvent) {
-                        ClaudeProcessManager.getInstance(project).sendText("\u0016")
+                        AgentProcessManager.getInstance(project).sendText("\u0016")
                     }
                 }
             }
@@ -268,7 +311,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                 disposable
             )
 
-            val toolbar = ClaudeToolbar(project)
+            val toolbar = AgentToolbar(project)
             val terminalWithToolbar = JPanel(BorderLayout()).apply {
                 add(toolbar, BorderLayout.NORTH)
                 add(terminalWidget.component, BorderLayout.CENTER)
@@ -318,11 +361,11 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
             toolWindow.contentManager.addContent(content)
             toolWindow.contentManager.setSelectedContent(content)
 
-            // Start Claude session
+            // Start agent session
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
-                    val pm = ClaudeProcessManager.getInstance(project)
-                    val result = pm.createSession(sessionName)
+                    val pm = AgentProcessManager.getInstance(project)
+                    val result = pm.createSession(sessionName, cli, resolvedBinary)
 
                     content.putUserData(SESSION_ID_KEY, result.sessionId)
                     pm.setActiveSession(result.sessionId)
@@ -331,19 +374,19 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                         try {
                             terminalWidget.createTerminalSession(result.connector)
                             terminalWidget.start()
-                            log.info("Claude session started: $sessionName [${result.sessionId}]")
+                            log.info("Agent session started: $sessionName [${result.sessionId}]")
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
-                            notifyError(project, ClaudeBundle.message("toolwindow.error.terminal", e.message ?: ""))
+                            notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))
                         }
                     }
                 } catch (e: Exception) {
-                    log.error("Failed to create Claude process", e)
-                    notifyError(project, ClaudeBundle.message("toolwindow.error.start", e.message ?: ""))
+                    log.error("Failed to create agent process", e)
+                    notifyError(project, PrismBundle.message("toolwindow.error.start", e.message ?: ""))
                 }
             }
         } catch (e: Exception) {
-            log.error("Failed to create Claude terminal widget", e)
+            log.error("Failed to create agent terminal widget", e)
             showFallbackContent(project, toolWindow, e.message ?: "Unknown error")
         }
     }
@@ -351,15 +394,18 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {
         for (i in 0 until toolWindow.contentManager.contentCount) {
             val content = toolWindow.contentManager.getContent(i)
-            if (content?.displayName == ClaudeBundle.message("toolwindow.tab.history")) {
+            if (content?.displayName == PrismBundle.message("toolwindow.tab.history")) {
                 toolWindow.contentManager.setSelectedContent(content)
+                // History is scoped to the active session's CLI, which may have changed
+                // to another agent since this tab was built.
+                (content.component as? HistoryPanel)?.loadHistory()
                 return
             }
         }
 
         val historyPanel = HistoryPanel(project)
         val content = toolWindow.contentManager.factory.createContent(
-            historyPanel, ClaudeBundle.message("toolwindow.tab.history"), false
+            historyPanel, PrismBundle.message("toolwindow.tab.history"), false
         )
         content.isCloseable = true
         toolWindow.contentManager.addContent(content)
@@ -367,16 +413,28 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         historyPanel.loadHistory()
     }
 
-    private fun showClaudeNotFoundError(project: Project, toolWindow: ToolWindow) {
-        val validator = com.github.vgirotto.prism.services.ClaudeValidationService.getInstance()
-        val message = validator.getClaudeNotFoundMessage()
+    private fun showCliNotFoundError(project: Project, toolWindow: ToolWindow, cli: AgentCli) {
+        val (heading, installCmd, notificationTitle, message) = when (cli) {
+            AgentCli.CLAUDE -> CliNotFoundCopy(
+                heading = "Claude not found",
+                installCmd = "npm install -g @anthropic-ai/claude-code",
+                notificationTitle = "Claude Code",
+                message = ClaudeValidationService.getInstance().getClaudeNotFoundMessage(),
+            )
+            AgentCli.CODEX -> CliNotFoundCopy(
+                heading = "Codex not found",
+                installCmd = "npm install -g @openai/codex",
+                notificationTitle = "Codex",
+                message = CodexValidationService.getInstance().getCodexNotFoundMessage(),
+            )
+        }
 
         val label = JLabel(
             "<html><center>" +
-                "<h3>Claude not found</h3>" +
+                "<h3>$heading</h3>" +
                 "<p>Install it with:</p>" +
-                "<code>npm install -g @anthropic-ai/claude-code</code>" +
-                "<p>Then restart the IDE</p>" +
+                "<code>$installCmd</code>" +
+                "<p>Then start a new session</p>" +
                 "</center></html>",
             SwingConstants.CENTER
         )
@@ -385,20 +443,27 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
 
         NotificationGroupManager.getInstance()
             .getNotificationGroup("Prism")
-            .createNotification("Claude Code", message, NotificationType.ERROR)
+            .createNotification(notificationTitle, message, NotificationType.ERROR)
             .notify(project)
     }
+
+    private data class CliNotFoundCopy(
+        val heading: String,
+        val installCmd: String,
+        val notificationTitle: String,
+        val message: String,
+    )
 
     private fun showFallbackContent(project: Project, toolWindow: ToolWindow, error: String) {
         val label = JLabel(
             "<html><center>" +
-                "<h3>${ClaudeBundle.message("toolwindow.error.init")}</h3>" +
-                "<p>${ClaudeBundle.message("toolwindow.error.label", error)}</p>" +
-                "<p>${ClaudeBundle.message("toolwindow.error.settings")}</p>" +
+                "<h3>${PrismBundle.message("toolwindow.error.init")}</h3>" +
+                "<p>${PrismBundle.message("toolwindow.error.label", error)}</p>" +
+                "<p>${PrismBundle.message("toolwindow.error.settings")}</p>" +
                 "</center></html>",
             SwingConstants.CENTER
         )
-        val content = toolWindow.contentManager.factory.createContent(label, ClaudeBundle.message("toolwindow.tab.error"), false)
+        val content = toolWindow.contentManager.factory.createContent(label, PrismBundle.message("toolwindow.tab.error"), false)
         toolWindow.contentManager.addContent(content)
     }
 
@@ -429,7 +494,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         } catch (e: Exception) { false }
 
         // Image branch: save clipboard bytes to a temp PNG and paste the path.
-        // Pasting a path (rather than forwarding ^V) avoids depending on Claude's
+        // Pasting a path (rather than forwarding ^V) avoids depending on the agent's
         // own clipboard reader, which can't always pick up screenshots on Linux/X11.
         if (imageFlavorAvailable) {
             val path = saveClipboardImageToTempFile(clipboard)
@@ -438,7 +503,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
                 return
             }
             log.warn("SmartPaste: image flavor advertised but bytes could not be read; falling back to ^V")
-            ClaudeProcessManager.getInstance(project).sendText("\u0016")
+            AgentProcessManager.getInstance(project).sendText("\u0016")
             return
         }
 
@@ -458,7 +523,7 @@ class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
         // Bracketed paste mode: tells the CLI this is pasted content so newlines
         // are treated as input rather than submit, and key sequences inside the
         // text aren't interpreted as shortcuts.
-        ClaudeProcessManager.getInstance(project).sendText("\u001b[200~$payload\u001b[201~")
+        AgentProcessManager.getInstance(project).sendText("\u001b[200~$payload\u001b[201~")
     }
 
     private fun saveClipboardImageToTempFile(clipboard: java.awt.datatransfer.Clipboard): String? {

@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — Not yet published
+
+### Added
+
+- **Codex integration**: Prism now supports both Claude Code and OpenAI Codex CLI sessions from the same tool window.
+- **New Session picker**: when both supported CLIs are installed, the New Session action lets you choose whether to start a Claude Code or Codex session.
+- **Default agent setting**: settings now include a default CLI plus separate executable paths for Claude Code and Codex.
+- **Codex conversation history**: the History panel can browse Codex sessions from `~/.codex/sessions`, filtered to the current IDE project by `cwd`.
+- **Full toolbar for Codex**: the Resume, Compact, Clear, Model, Effort, and Cost buttons now work in Codex sessions, mapped to their Codex equivalents. Resume/Compact/Clear send the identical slash command; Model and Effort drive Codex's interactive `/model` picker (model list and reasoning level) via keystrokes; Cost is a dropdown that opens Codex's `/usage` token-activity view for the daily, weekly, or cumulative period.
+
+### Changed
+
+- **Agent Changes panel**: the changes window is now agent-agnostic, so Codex sessions use the same per-interaction snapshots, diff navigation, and revert workflow as Claude sessions.
+- **Agent terminology**: user-facing actions, settings, status, and documentation now refer to Prism or the active agent where behavior applies to both Claude Code and Codex.
+- **Plugin metadata**: plugin name, Marketplace description, README, and localized messages now describe support for Claude Code and Codex.
+
+### Technical
+
+- Codex model detection skips the `loading` placeholder Codex paints in its welcome box before the real model resolves, so the status bar shows the actual model instead of `loading` for the life of the session. The reasoning level is read from the same line, with the older separate `reasoning effort:` line kept as a fallback.
+- CLI binary lookups fall back to the PATH the user's login shell exports — read once at IDE startup by the platform — instead of spawning `which` against the IDE's own environment. A GUI-launched IDE inherits that environment from the desktop session, which on macOS means launchd's `/usr/bin:/bin:/usr/sbin:/sbin`, so a CLI under `~/.local/bin`, nvm, volta, or Homebrew was invisible to the lookup even though `which` finds it in a terminal.
+- Every lookup re-checks disk rather than caching: with no process to spawn, a full miss over all candidate paths and PATH entries costs tens of microseconds, so a CLI installed, upgraded in place, or removed mid-session is seen by the next New Session click with no cached answer to go stale first.
+- The New Session picker takes keyboard focus while it is open, so Escape dismisses it without also reaching the agent running in the terminal behind it.
+- Sessions launch the absolute binary path the availability preflight already resolved, rather than re-resolving the configured name through the login shell's PATH.
+- New-session startup logs phase timings at INFO, measured monotonically: four lines greppable as `timing:` (click → availability → UI, preflight resolve, PTY spawn, first shell output), plus a launch-relative offset appended to the existing `Startup parsed` line.
+- Replaced Claude-specific session, process, terminal, settings, toolbar, and tool-window classes with agent-aware equivalents.
+- Split conversation history parsing behind a `HistoryReader` interface with dedicated Claude and Codex readers.
+- Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
+
 ## [1.2.2] — 2026-06-30
 
 ### Changed
