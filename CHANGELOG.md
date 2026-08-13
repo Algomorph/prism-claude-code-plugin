@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agent terminology**: user-facing actions, settings, status, and documentation now refer to Prism or the active agent where behavior applies to both Claude Code and Codex.
 - **Plugin metadata**: plugin name, Marketplace description, README, and localized messages now describe support for Claude Code and Codex.
 
+### Fixed
+
+- **Reordering chat tabs**: dragging a tab to a new position no longer freezes it. The platform reorders a tab by removing its content and re-adding it at the new index, which Prism read as the tab being closed and used as the cue to kill that session's agent process — the tab came back with its terminal still painted but nothing running behind it. Session teardown is now tied to the tab actually being disposed, which only a real close does.
+
 ### Technical
 
 - Codex model detection skips the `loading` placeholder Codex paints in its welcome box before the real model resolves, so the status bar shows the actual model instead of `loading` for the life of the session. The reasoning level is read from the same line, with the older separate `reasoning effort:` line kept as a fallback.
