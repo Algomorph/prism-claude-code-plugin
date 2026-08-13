@@ -53,6 +53,7 @@
     <ul>
         <li>Fix: Claude Code and Codex command settings now support optional arguments, including quoted paths with spaces</li>
         <li>Fix: Prism validates the executable separately and preserves configured arguments when starting a session</li>
+        <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
     </ul>
     <h2>v1.3.0 — Codex Integration</h2>
     <ul>
