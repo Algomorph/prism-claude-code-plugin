@@ -56,6 +56,8 @@
         <li>New: <strong>Default agent</strong> setting and dedicated Codex executable path</li>
         <li>New: <strong>Codex history</strong> — Conversation History reads sessions from <code>~/.codex/sessions</code></li>
         <li>New: <strong>Full toolbar for Codex</strong> — Resume, Compact, Clear, Model, Effort, and Cost now work in Codex sessions, mapped to their Codex equivalents</li>
+        <li>New: the embedded terminal now follows the IDE's <strong>terminal font settings</strong> — family, size, and line spacing from Settings &gt; Tools &gt; Terminal, instead of the editor's console font at an unscaled size (which rendered tiny on HiDPI displays)</li>
+        <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
         <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
     </ul>

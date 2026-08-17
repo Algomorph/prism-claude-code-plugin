@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Default agent setting**: settings now include a default CLI plus separate executable paths for Claude Code and Codex.
 - **Codex conversation history**: the History panel can browse Codex sessions from `~/.codex/sessions`, filtered to the current IDE project by `cwd`.
 - **Full toolbar for Codex**: the Resume, Compact, Clear, Model, Effort, and Cost buttons now work in Codex sessions, mapped to their Codex equivalents. Resume/Compact/Clear send the identical slash command; Model and Effort drive Codex's interactive `/model` picker (model list and reasoning level) via keystrokes; Cost is a dropdown that opens Codex's `/usage` token-activity view for the daily, weekly, or cumulative period.
+- **Terminal font**: the terminal in Prism now uses the font settings of the IDE terminal. Set the font family, the font size, and the line spacing in Settings > Tools > Terminal > Font Settings. Prism used the console font of the editor before, and it ignored a terminal font that you set. On a HiDPI display, the text was also too small.
+- **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry. The entry opens the terminal settings page of the IDE. The gear icon in the toolbar continues to open the settings of Prism.
 
 ### Changed
 
@@ -36,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced Claude-specific session, process, terminal, settings, toolbar, and tool-window classes with agent-aware equivalents.
 - Split conversation history parsing behind a `HistoryReader` interface with dedicated Claude and Codex readers.
 - Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
+- The terminal settings provider delegates the font, the font size, and the line spacing to the provider that the IDE terminal uses. Prism builds that provider through the classloader of the terminal plugin, because the class is not on the 2024.3 API baseline. Each delegate falls back to the platform base class if the provider is absent. Prism still extends the platform base class, so the tuned shortcut behavior and paste behavior do not change. One INFO line records the font family and the size that Prism resolved, or the cause of a failure.
+- The Font Settings entry finds the terminal settings page by its configurable class, which is independent of the language. If the class is absent, Prism selects the page by its display name.
 
 ## [1.2.2] — 2026-06-30
 
