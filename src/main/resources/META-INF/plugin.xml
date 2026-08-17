@@ -60,6 +60,7 @@
         <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
         <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
+        <li>Fix: dragging in the terminal selects copyable text again — the agents turn on mouse reporting, which was swallowing the drag and leaving <strong>Copy</strong> greyed out</li>
     </ul>
     <h2>v1.2.2 — Smart Paste on Linux</h2>
     <ul>

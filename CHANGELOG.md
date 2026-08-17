@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Reordering chat tabs**: dragging a tab to a new position no longer freezes it. The platform reorders a tab by removing its content and re-adding it at the new index, which Prism read as the tab being closed and used as the cue to kill that session's agent process — the tab came back with its terminal still painted but nothing running behind it. Session teardown is now tied to the tab actually being disposed, which only a real close does.
+- **Copy from the terminal**: you can now select terminal text with the mouse and copy it. Claude and Codex turn on mouse reporting, and the terminal sent each drag to the agent instead of making a selection. The `Copy` command in the context menu stayed disabled, and the drag only painted the highlight of the agent.
 
 ### Technical
 
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
 - The terminal settings provider delegates the font, the font size, and the line spacing to the provider that the IDE terminal uses. Prism builds that provider through the classloader of the terminal plugin, because the class is not on the 2024.3 API baseline. Each delegate falls back to the platform base class if the provider is absent. Prism still extends the platform base class, so the tuned shortcut behavior and paste behavior do not change. One INFO line records the font family and the size that Prism resolved, or the cause of a failure.
 - The Font Settings entry finds the terminal settings page by its configurable class, which is independent of the language. If the class is absent, Prism selects the page by its display name.
+- The terminal settings provider now overrides `forceActionOnMouseReporting`. It delegates to the provider of the IDE terminal, and it uses `true` as the fallback value. The JediTerm default is `false`, and that default is the cause of the defect.
 
 ## [1.2.2] — 2026-06-30
 
