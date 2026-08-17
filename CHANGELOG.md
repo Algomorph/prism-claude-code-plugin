@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The transcript updates while the agent works. It uses the light theme or the dark theme of the IDE, and it changes theme immediately. Prism supplies the transcript in English, Spanish, and Portuguese.
   - You can show the transcript in the editor area or in the tool-window split. Select the location in Settings. Prism uses the editor area by default. In the tool-window split, the terminal keeps a minimum height, and you can expand the terminal to the full height.
   - Claude sessions and Codex sessions both show the transcript. For a Claude session, Prism identifies the transcript file with the `--session-id` option. For a Codex session, Prism finds the rollout files for the project directory and selects the most recent file. If Prism cannot read a transcript, the terminal continues to work, and the transcript pane shows that the transcript is not available.
+- **Terminal font**: the terminal in Prism now uses the font settings of the IDE terminal. Set the font family, the font size, and the line spacing in Settings > Tools > Terminal > Font Settings. Prism used the console font of the editor before, and it ignored a terminal font that you set. On a HiDPI display, the text was also too small.
+- **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry. The entry opens the terminal settings page of the IDE. The gear icon in the toolbar continues to open the settings of Prism.
 
 ### Changed
 
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Reordering chat tabs**: dragging a tab to a new position no longer freezes it. The platform reorders a tab by removing its content and re-adding it at the new index, which Prism read as the tab being closed and used as the cue to kill that session's agent process — the tab came back with its terminal still painted but nothing running behind it. Session teardown is now tied to the tab actually being disposed, which only a real close does.
+- **Copy from the terminal**: you can now select terminal text with the mouse and copy it. Claude and Codex turn on mouse reporting, and the terminal sent each drag to the agent instead of making a selection. The `Copy` command in the context menu stayed disabled, and the drag only painted the highlight of the agent.
 
 ### Technical
 
@@ -42,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split conversation history parsing behind a `HistoryReader` interface with dedicated Claude and Codex readers.
 - Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
 - Added the transcript stack behind an agent-specific seam. The stack has a non-lossy JSONL parser, a secure JCEF render pipeline, incremental live tailing, and `/resume` rebinding. Claude and Codex each supply their own transcript source through this seam.
+- The terminal settings provider delegates the font, the font size, and the line spacing to the provider that the IDE terminal uses. Prism builds that provider through the classloader of the terminal plugin, because the class is not on the 2024.3 API baseline. Each delegate falls back to the platform base class if the provider is absent. Prism still extends the platform base class, so the tuned shortcut behavior and paste behavior do not change. One INFO line records the font family and the size that Prism resolved, or the cause of a failure.
+- The Font Settings entry finds the terminal settings page by its configurable class, which is independent of the language. If the class is absent, Prism selects the page by its display name.
+- The terminal settings provider now overrides `forceActionOnMouseReporting`. It delegates to the provider of the IDE terminal, and it uses `true` as the fallback value. The JediTerm default is `false`, and that default is the cause of the defect.
 
 ## [1.2.2] — 2026-06-30
 

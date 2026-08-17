@@ -29,7 +29,7 @@ import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.terminal.JBTerminalSystemSettingsProviderBase
+import com.github.vgirotto.prism.terminal.PrismTerminalSettingsProvider
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.Content
@@ -131,6 +131,19 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         toolWindow.setTitleActions(listOf(newSessionAction, historyAction, toggleChangesAction))
+
+        // "Font Settings" entry in the tool window's options (⋮) menu — jumps to
+        // the IDE's terminal font settings, which the embedded terminal follows.
+        val fontSettingsAction = object : DumbAwareAction(
+            PrismBundle.message("toolwindow.font.settings"),
+            PrismBundle.message("toolwindow.font.settings.desc"),
+            AllIcons.General.Settings
+        ) {
+            override fun actionPerformed(e: AnActionEvent) {
+                openTerminalSettings(project)
+            }
+        }
+        toolWindow.setAdditionalGearActions(DefaultActionGroup(fontSettingsAction))
 
         // Listen for tab selection changes. Session teardown is deliberately not wired
         // here — see the content disposer in buildSessionTab.
@@ -271,7 +284,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         Disposer.register(toolWindow.disposable, disposable)
 
         try {
-            val settingsProvider = JBTerminalSystemSettingsProviderBase()
+            val settingsProvider = PrismTerminalSettingsProvider()
             val terminalWidget = JBTerminalWidget(project, settingsProvider, disposable)
 
             // The picker takes focus so the press that closes it never reaches the terminal;
@@ -679,6 +692,24 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         toolWindow.contentManager.addContent(content)
         toolWindow.contentManager.setSelectedContent(content)
         historyPanel.loadHistory()
+    }
+
+    /**
+     * Open the IDE's terminal settings page (Tools > Terminal), where the font
+     * settings the embedded terminal follows live. Navigates by the terminal
+     * configurable class when present (locale-independent); falls back to
+     * selecting it by display name.
+     */
+    private fun openTerminalSettings(project: Project) {
+        val util = com.intellij.openapi.options.ShowSettingsUtil.getInstance()
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val configurable = Class.forName("org.jetbrains.plugins.terminal.TerminalOptionsConfigurable")
+                as Class<out com.intellij.openapi.options.Configurable>
+            util.showSettingsDialog(project, configurable)
+        } catch (_: Throwable) {
+            util.showSettingsDialog(project, "Terminal")
+        }
     }
 
     private fun showCliNotFoundError(project: Project, toolWindow: ToolWindow, cli: AgentCli) {
