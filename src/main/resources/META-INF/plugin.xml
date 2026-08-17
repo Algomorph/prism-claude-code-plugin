@@ -56,7 +56,7 @@
         <li>New: <strong>Default agent</strong> setting and dedicated Codex executable path</li>
         <li>New: <strong>Codex history</strong> — Conversation History reads sessions from <code>~/.codex/sessions</code></li>
         <li>New: <strong>Full toolbar for Codex</strong> — Resume, Compact, Clear, Model, Effort, and Cost now work in Codex sessions, mapped to their Codex equivalents</li>
-        <li>New: a rendered <strong>transcript pane</strong> above the terminal — typeset <strong>KaTeX math</strong> (click to reveal &amp; copy byte-exact LaTeX), inline images, collapsible tool calls/results and thinking; all interaction stays in the terminal below, unchanged.</li>
+        <li>New: a rendered <strong>transcript</strong> for every chat — typeset <strong>KaTeX math</strong> (click to reveal &amp; copy byte-exact LaTeX), inline images, collapsible tool calls/results and thinking; all interaction stays in the terminal, unchanged.</li>
         <li>Live: the transcript follows the session as it runs, matches the IDE light/dark theme in place, and is localized (en/es/pt).</li>
         <li>Safe: transcript content is rendered in-browser through escape → marked → DOMPurify → trusted nodes under a strict CSP; images are decoded/validated/re-encoded (no SVG, no remote loads).</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
