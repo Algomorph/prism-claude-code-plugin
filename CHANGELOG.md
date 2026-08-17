@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The transcript updates while the agent works. It uses the light theme or the dark theme of the IDE, and it changes theme immediately. Prism supplies the transcript in English, Spanish, and Portuguese.
   - You can show the transcript in the editor area or in the tool-window split. Select the location in Settings. Prism uses the editor area by default. In the tool-window split, the terminal keeps a minimum height, and you can expand the terminal to the full height.
   - Claude sessions and Codex sessions both show the transcript. For a Claude session, Prism identifies the transcript file with the `--session-id` option. For a Codex session, Prism finds the rollout files for the project directory and selects the most recent file. If Prism cannot read a transcript, the terminal continues to work, and the transcript pane shows that the transcript is not available.
+- **Session names on chat tabs**: each chat tab shows the name of its conversation instead of `Chat #1`. Prism reads the name from the session file on disk, and it updates the tab while the chat runs.
+  - For a Claude session, Prism uses the title that Claude records. A title that you set wins over a title that Claude generates.
+  - Codex records no title, so for a Codex session Prism uses the first user message. This is the same label that the Codex `/resume` picker shows.
+  - If no name is available, the tab keeps its number. Prism clips a long name at a word boundary. The tooltip shows the full name and the name of the agent.
+- **Agent marks on tabs**: each chat tab, the New Session picker, and the transcript editor tab show a mark for the active agent. The marks are simple shapes in the Prism colors. They are not vendor logos.
 
 ### Changed
 
@@ -42,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split conversation history parsing behind a `HistoryReader` interface with dedicated Claude and Codex readers.
 - Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
 - Added the transcript stack behind an agent-specific seam. The stack has a non-lossy JSONL parser, a secure JCEF render pipeline, incremental live tailing, and `/resume` rebinding. Claude and Codex each supply their own transcript source through this seam.
+- Added live chat-name resolution behind a per-agent source seam. Each source does one bounded tail read of a candidate session file. The read identifies the conversation and supplies the title. A rank keeps a better name from losing to a worse name.
+- The transcript editor tab renames in place. Prism looks up the refresh call on the editor manager at runtime, and it prefers the public name. This keeps the plugin off internal API on all supported hosts.
+- Prism now finds the Conversation History tab by a key instead of by its display name, because a chat can now use the name `History`.
 
 ## [1.2.2] — 2026-06-30
 
