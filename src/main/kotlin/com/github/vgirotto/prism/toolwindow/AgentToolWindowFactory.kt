@@ -66,7 +66,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     companion object {
         val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
         val DIFF_PANEL_KEY = Key.create<DiffPanel>("AgentDiffPanel")
-        val SESSION_DISPOSABLE_KEY = Key.create<com.intellij.openapi.Disposable>("AgentSessionDisposable")
 
         private const val TERMINAL_CONFIGURABLE_ID = "terminal"
 
@@ -451,7 +450,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             )
             content.isCloseable = true
             content.putUserData(DIFF_PANEL_KEY, diffPanel)
-            content.putUserData(SESSION_DISPOSABLE_KEY, disposable)
             content.putUserData(CHAT_PANEL_KEY, chatShellPanel)
             contentHolder[0] = content
 
