@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.1] — 2026-08-26
 
+### Added
+
+- **Terminal font**: the terminal in Prism now uses the font settings of the IDE terminal. Set the font family, the font size, and the line spacing in Settings > Tools > Terminal > Font Settings. Prism used the console font of the editor before, and it ignored a terminal font that you set. On a HiDPI display, the text was also too small. Prism delegates the font, the font size, and the line spacing to the settings provider the IDE terminal itself uses, built through the terminal plugin's classloader because that class is not on the 2024.3 API baseline; each delegate falls back to the platform base class when the provider is absent, so the tuned shortcut and paste behavior are unchanged.
+- **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry, which opens the IDE's terminal settings page — found by its configurable class, so the lookup is language-independent, falling back to the page's display name if that class is absent. The gear icon in the toolbar continues to open the settings of Prism.
+
 ### Fixed
 
 - **Custom CLI arguments**: Claude Code and Codex command settings now accept optional arguments, including quoted paths with spaces. Prism validates the executable separately and preserves each argument when starting the session (fixes #13).
