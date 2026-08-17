@@ -63,6 +63,7 @@
         <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
         <li>Live transcripts work for both <strong>Claude</strong> (via <code>--session-id</code>) and <strong>Codex</strong> (rollout resolved by project + recency), in the tool-window split or the editor area — your choice in Settings.</li>
+        <li>New: <strong>named chat tabs</strong> — a tab takes its conversation's own title instead of <code>Chat #1</code> (Claude's recorded title, or the first message for Codex) and carries a mark for the agent running in it; the tooltip has the full title.</li>
         <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
         <li>Fix: dragging in the terminal selects copyable text again — the agents turn on mouse reporting, which was swallowing the drag and leaving <strong>Copy</strong> greyed out</li>
     </ul>
@@ -135,6 +136,8 @@
         <!-- Transcript editor tab (transcript-in-editor mode) -->
         <fileEditorProvider
             implementation="com.github.vgirotto.prism.chatshell.TranscriptFileEditorProvider"/>
+        <fileIconProvider
+            implementation="com.github.vgirotto.prism.chatshell.TranscriptFileIconProvider"/>
 
         <!-- Settings -->
         <projectConfigurable

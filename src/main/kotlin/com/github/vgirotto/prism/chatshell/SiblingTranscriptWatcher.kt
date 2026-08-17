@@ -1,9 +1,9 @@
 package com.github.vgirotto.prism.chatshell
 
+import com.github.vgirotto.prism.services.FileTail
 import com.intellij.openapi.Disposable
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.File
-import java.io.RandomAccessFile
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
@@ -79,19 +79,8 @@ class SiblingTranscriptWatcher(
      * tail only (these files can be tens of MB). Returns null if the tail carries none.
      */
     private fun latestSessionId(file: File): String? {
-        return try {
-            RandomAccessFile(file, "r").use { raf ->
-                val len = raf.length()
-                if (len == 0L) return null
-                val window = minOf(len, TAIL_BYTES)
-                raf.seek(len - window)
-                val bytes = ByteArray(window.toInt())
-                raf.readFully(bytes)
-                SESSION_ID_RE.findAll(String(bytes, Charsets.UTF_8)).lastOrNull()?.groupValues?.get(1)
-            }
-        } catch (_: Exception) {
-            null
-        }
+        val tail = FileTail.read(file, TAIL_BYTES) ?: return null
+        return SESSION_ID_RE.findAll(tail).lastOrNull()?.groupValues?.get(1)
     }
 
     override fun dispose() {
