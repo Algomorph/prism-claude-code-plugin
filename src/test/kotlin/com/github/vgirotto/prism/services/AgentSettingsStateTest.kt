@@ -86,6 +86,14 @@ class AgentSettingsStateTest {
     }
 
     @Test
+    fun `getExcludedPatterns parses multiline patterns and keeps comma compatibility`() {
+        val settings = AgentSettingsState()
+        settings.excludedPatterns = ".git\nnode_modules, build\r\n**/generated"
+
+        assertEquals(listOf(".git", "node_modules", "build", "**/generated"), settings.getExcludedPatterns())
+    }
+
+    @Test
     fun `getExcludedPatterns handles empty string`() {
         val settings = AgentSettingsState()
         settings.excludedPatterns = ""

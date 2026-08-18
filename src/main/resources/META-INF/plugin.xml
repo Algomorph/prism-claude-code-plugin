@@ -57,6 +57,8 @@
         <li>New: <strong>Codex history</strong> — Conversation History reads sessions from <code>~/.codex/sessions</code></li>
         <li>New: <strong>Full toolbar for Codex</strong> — Resume, Compact, Clear, Model, Effort, and Cost now work in Codex sessions, mapped to their Codex equivalents</li>
         <li>Change: User-facing UI strings generalized to refer to "the agent" rather than Claude where appropriate</li>
+        <li>Change: Excluded patterns field is now a multiline text area (one pattern per line), with a live count of patterns defined</li>
+        <li>Fix: Snapshots and revert now skip paths that cross a symbolic link, preventing access outside the project directory</li>
     </ul>
     <h2>v1.2.2 — Smart Paste on Linux</h2>
     <ul>

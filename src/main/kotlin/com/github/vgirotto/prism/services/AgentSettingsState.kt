@@ -22,7 +22,7 @@ class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
         var shellPath: String = System.getenv("SHELL") ?: "/bin/zsh",
         var showChangesOnStartup: Boolean = true,
         var showStatusBarWidget: Boolean = true,
-        var excludedPatterns: String = ".git,node_modules,build,out,.gradle,.idea,target,dist,.next,__pycache__,.venv,vendor,.intellijPlatform,.DS_Store,.cls,.cache",
+        var excludedPatterns: String = DEFAULT_EXCLUDED_PATTERNS,
         var maxFileSizeKb: Int = 512,
         var language: String = "en",
     )
@@ -80,10 +80,20 @@ class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
         get() = state.language
         set(value) { state.language = value }
 
+    /**
+     * Accepts both the legacy comma-separated form and the multiline form used by the settings UI.
+     */
     fun getExcludedPatterns(): List<String> =
-        excludedPatterns.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        parseExcludedPatterns(excludedPatterns)
 
     companion object {
+        const val DEFAULT_EXCLUDED_PATTERNS =
+            ".git\nnode_modules\nbuild\nout\n.gradle\n.idea\ntarget\ndist\n.next\n__pycache__\n.venv\nvendor\n" +
+                ".intellijPlatform\n.DS_Store\n.cls\n.cache"
+
+        fun parseExcludedPatterns(value: String): List<String> =
+            value.split(Regex("[,\\r\\n]+")).map { it.trim() }.filter { it.isNotEmpty() }
+
         fun getInstance(): AgentSettingsState =
             ApplicationManager.getApplication().getService(AgentSettingsState::class.java)
     }

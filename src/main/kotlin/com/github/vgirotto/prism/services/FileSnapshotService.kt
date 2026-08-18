@@ -13,6 +13,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -181,29 +182,37 @@ class FileSnapshotService(private val project: Project) : Disposable {
     }
 
     fun revertEntry(entry: FileDiffEntry): Boolean {
-        val basePath = project.basePath ?: return false
-        val fullPath = "$basePath/${entry.path}"
+        val fullPath = safeProjectPath(entry.path) ?: run {
+            log.warn("Refusing to revert unsafe snapshot path")
+            return false
+        }
+        var reverted = false
         return try {
             val action = Runnable {
                 ApplicationManager.getApplication().runWriteAction {
                     try {
+                        if (safeProjectPath(entry.path) != fullPath) {
+                            log.warn("Refusing to revert snapshot path that is no longer safe")
+                            return@runWriteAction
+                        }
                         when (entry.status) {
                             ChangeStatus.MODIFIED -> {
                                 val content = entry.originalContent ?: return@runWriteAction
-                                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath)
+                                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath.toString())
                                     ?.setBinaryContent(content)
                             }
                             ChangeStatus.ADDED -> {
-                                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath)
+                                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath.toString())
                                     ?.delete(this)
                             }
                             ChangeStatus.DELETED -> {
                                 val content = entry.originalContent ?: return@runWriteAction
-                                val parentDir = VfsUtil.createDirectoryIfMissing(File(fullPath).parent)
-                                parentDir?.createChildData(this, File(fullPath).name)
+                                val parentDir = VfsUtil.createDirectoryIfMissing(fullPath.parent.toString())
+                                parentDir?.createChildData(this, fullPath.fileName.toString())
                                     ?.setBinaryContent(content)
                             }
                         }
+                        reverted = true
                     } catch (e: Exception) {
                         log.warn("Revert failed: ${entry.path}", e)
                     }
@@ -211,7 +220,7 @@ class FileSnapshotService(private val project: Project) : Disposable {
             }
             if (ApplicationManager.getApplication().isDispatchThread) action.run()
             else ApplicationManager.getApplication().invokeAndWait(action)
-            true
+            reverted
         } catch (e: Exception) {
             log.warn("Revert failed: ${entry.path}", e)
             false
@@ -299,6 +308,10 @@ class FileSnapshotService(private val project: Project) : Disposable {
         val checked = mutableSetOf<String>()
         for (relativePath in pathsToCheck) {
             if (!checked.add(relativePath) || isExcluded(relativePath)) continue
+            if (containsSymbolicLink(basePath, relativePath)) {
+                log.debug("Skipping symbolic-link path in diff: $relativePath")
+                continue
+            }
 
             val projectFile = File(basePath, relativePath)
             val tempFile = File(tempDir, relativePath)
@@ -335,6 +348,10 @@ class FileSnapshotService(private val project: Project) : Disposable {
 
         for (relativePath in currentChangedPaths) {
             if (checked.contains(relativePath) || isExcluded(relativePath)) continue
+            if (containsSymbolicLink(basePath, relativePath)) {
+                log.debug("Skipping symbolic-link path in diff: $relativePath")
+                continue
+            }
             val file = File(basePath, relativePath)
             if (file.isFile && file.length() < 1_000_000 && snapshotHashes[relativePath] == null) {
                 changes.add(FileDiffEntry(relativePath, ChangeStatus.ADDED, null, file.readBytes()))
@@ -375,6 +392,10 @@ class FileSnapshotService(private val project: Project) : Disposable {
         val children = dir.listFiles() ?: return
         for (file in children) {
             val relativePath = file.path.removePrefix(basePath).removePrefix("/")
+            if (Files.isSymbolicLink(file.toPath())) {
+                log.debug("Skipping symbolic link in snapshot: $relativePath")
+                continue
+            }
             if (file.isDirectory) {
                 if (isExcluded(relativePath)) continue
                 fullCopy(file, basePath, tempDir, hashes)
@@ -404,6 +425,10 @@ class FileSnapshotService(private val project: Project) : Disposable {
 
         for (relativePath in currentChangedPaths) {
             if (isExcluded(relativePath)) continue
+            if (containsSymbolicLink(basePath, relativePath)) {
+                log.debug("Skipping symbolic-link path in snapshot update: $relativePath")
+                continue
+            }
 
             val projectFile = File(basePath, relativePath)
             val tempFile = File(tempDir, relativePath)
@@ -433,6 +458,10 @@ class FileSnapshotService(private val project: Project) : Disposable {
         for (relativePath in currentChangedPaths) {
             if (isExcluded(relativePath)) continue
             if (hashes.containsKey(relativePath)) continue
+            if (containsSymbolicLink(basePath, relativePath)) {
+                log.debug("Skipping symbolic-link path in snapshot update: $relativePath")
+                continue
+            }
 
             val projectFile = File(basePath, relativePath)
             if (projectFile.isFile && projectFile.length() < 1_000_000) {
@@ -489,6 +518,43 @@ class FileSnapshotService(private val project: Project) : Disposable {
         return mandatoryMatcher.matches(path) ||
             userMatcher().matches(path) ||
             excludeFilePatterns.any { it.matches(path) }
+    }
+
+    /**
+     * Resolves [relativePath] only when it remains under the project's real directory and none
+     * of its existing components is a symbolic link. Snapshot entries are expected to be project
+     * relative, but this check makes revert safe even if a stale or malformed entry is supplied.
+     */
+    private fun safeProjectPath(relativePath: String): Path? {
+        val basePath = project.basePath ?: return null
+        val root = try {
+            File(basePath).toPath().toRealPath()
+        } catch (_: Exception) {
+            return null
+        }
+        val candidate = root.resolve(relativePath).normalize()
+        if (!candidate.startsWith(root)) return null
+
+        var component = root
+        for (name in root.relativize(candidate)) {
+            component = component.resolve(name)
+            if (Files.isSymbolicLink(component)) return null
+        }
+        return candidate
+    }
+
+    /** True when [relativePath] escapes [basePath] or crosses a symbolic-link component. */
+    private fun containsSymbolicLink(basePath: String, relativePath: String): Boolean {
+        val root = File(basePath).toPath().toAbsolutePath().normalize()
+        val candidate = root.resolve(relativePath).normalize()
+        if (!candidate.startsWith(root)) return true
+
+        var component = root
+        for (name in root.relativize(candidate)) {
+            component = component.resolve(name)
+            if (Files.isSymbolicLink(component)) return true
+        }
+        return false
     }
 
     private fun pathsToCheck(currentChangedPaths: Set<String>): Set<String> {

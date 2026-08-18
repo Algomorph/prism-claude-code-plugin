@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] — Not yet published
+## [1.3.0] — 2026-08-18
 
 ### Added
 
@@ -20,18 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agent Changes panel**: the changes window is now agent-agnostic, so Codex sessions use the same per-interaction snapshots, diff navigation, and revert workflow as Claude sessions.
 - **Agent terminology**: user-facing actions, settings, status, and documentation now refer to Prism or the active agent where behavior applies to both Claude Code and Codex.
 - **Plugin metadata**: plugin name, Marketplace description, README, and localized messages now describe support for Claude Code and Codex.
+- **Excluded patterns field**: settings now use a multiline text area (one pattern per line) instead of a single-line field, with a live count of patterns defined; comma-separated values remain supported for backward compatibility.
 
-### Technical
+### Fixed
 
-- Codex model detection skips the `loading` placeholder Codex paints in its welcome box before the real model resolves, so the status bar shows the actual model instead of `loading` for the life of the session. The reasoning level is read from the same line, with the older separate `reasoning effort:` line kept as a fallback.
-- CLI binary lookups fall back to the PATH the user's login shell exports — read once at IDE startup by the platform — instead of spawning `which` against the IDE's own environment. A GUI-launched IDE inherits that environment from the desktop session, which on macOS means launchd's `/usr/bin:/bin:/usr/sbin:/sbin`, so a CLI under `~/.local/bin`, nvm, volta, or Homebrew was invisible to the lookup even though `which` finds it in a terminal.
-- Every lookup re-checks disk rather than caching: with no process to spawn, a full miss over all candidate paths and PATH entries costs tens of microseconds, so a CLI installed, upgraded in place, or removed mid-session is seen by the next New Session click with no cached answer to go stale first.
-- The New Session picker takes keyboard focus while it is open, so Escape dismisses it without also reaching the agent running in the terminal behind it.
-- Sessions launch the absolute binary path the availability preflight already resolved, rather than re-resolving the configured name through the login shell's PATH.
-- New-session startup logs phase timings at INFO, measured monotonically: four lines greppable as `timing:` (click → availability → UI, preflight resolve, PTY spawn, first shell output), plus a launch-relative offset appended to the existing `Startup parsed` line.
-- Replaced Claude-specific session, process, terminal, settings, toolbar, and tool-window classes with agent-aware equivalents.
-- Split conversation history parsing behind a `HistoryReader` interface with dedicated Claude and Codex readers.
-- Added shared CLI binary lookup and Codex validation services, plus tests for agent settings, Codex history parsing, toolbar availability, banner parsing, and CLI path resolution.
+- **Snapshot/revert symlink safety**: snapshots and revert operations now skip any path that crosses a symbolic link, preventing an interaction diff from reading or overwriting files outside the project directory through a symlinked folder.
 
 ## [1.2.2] — 2026-06-30
 

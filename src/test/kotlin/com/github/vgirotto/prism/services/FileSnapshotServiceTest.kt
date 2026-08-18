@@ -322,6 +322,23 @@ class FileSnapshotServiceTest {
         customEngine.dispose()
     }
 
+    @Test
+    fun `skips symbolic links during snapshot`() {
+        val outside = Files.createTempDirectory("snapshot-outside-").toFile()
+        try {
+            File(outside, "private.txt").writeText("outside project")
+            val link = File(projectDir, "linked-outside")
+            Files.createSymbolicLink(link.toPath(), outside.toPath())
+
+            engine.takeSnapshot()
+
+            assertFalse(engine.hasHash("linked-outside/private.txt"))
+            assertFalse(engine.tempFileExists("linked-outside/private.txt"))
+        } finally {
+            outside.deleteRecursively()
+        }
+    }
+
     // --- History ---
 
     @Test
@@ -428,6 +445,28 @@ class FileSnapshotServiceTest {
         assertFalse(File(projectDir, "c.kt").exists())
     }
 
+    @Test
+    fun `revert refuses a path that crosses a symbolic link`() {
+        val outside = Files.createTempDirectory("revert-outside-").toFile()
+        try {
+            val privateFile = File(outside, "private.txt").apply { writeText("do not change") }
+            Files.createSymbolicLink(File(projectDir, "linked-outside").toPath(), outside.toPath())
+
+            engine.revertEntry(
+                FileDiffEntry(
+                    "linked-outside/private.txt",
+                    ChangeStatus.MODIFIED,
+                    "replacement".toByteArray(),
+                    null,
+                )
+            )
+
+            assertEquals("do not change", privateFile.readText())
+        } finally {
+            outside.deleteRecursively()
+        }
+    }
+
     // --- Memory / Performance ---
 
     @Test
@@ -499,6 +538,7 @@ class FileSnapshotServiceTest {
                 for (r in changed) {
                     if (excluded(r)) continue
                     val pf = File(basePath, r); val tf = File(td, r)
+                    if (containsSymbolicLink(r)) continue
                     if (!pf.exists()) {
                         if (tf.exists()) tf.delete()
                         h.remove(r)
@@ -517,6 +557,7 @@ class FileSnapshotServiceTest {
         private fun copyFiles(dir: File, base: String, td: File, h: MutableMap<String, String>) {
             for (f in (dir.listFiles() ?: return)) {
                 val r = f.path.removePrefix(base).removePrefix("/")
+                if (Files.isSymbolicLink(f.toPath())) continue
                 if (f.isDirectory) { if (!excluded(r)) copyFiles(f, base, td, h); continue }
                 if (!f.isFile || f.length() > 1_000_000) continue
                 if (excluded(r)) continue
@@ -542,6 +583,7 @@ class FileSnapshotServiceTest {
             for (r in paths) {
                 if (!checked.add(r) || excluded(r)) continue
                 val pf = File(basePath, r); val tf = File(td, r); val oh = hashes[r]
+                if (containsSymbolicLink(r)) continue
                 if (!pf.exists()) {
                     if (oh != null && tf.isFile) changes.add(FileDiffEntry(r, ChangeStatus.DELETED, tf.readBytes(), null))
                 } else if (pf.isFile && pf.length() < 1_000_000) {
@@ -553,6 +595,7 @@ class FileSnapshotServiceTest {
             for (r in changed) {
                 if (checked.contains(r) || excluded(r)) continue
                 val f = File(basePath, r)
+                if (containsSymbolicLink(r)) continue
                 if (f.isFile && f.length() < 1_000_000 && hashes[r] == null)
                     changes.add(FileDiffEntry(r, ChangeStatus.ADDED, null, f.readBytes()))
             }
@@ -562,7 +605,7 @@ class FileSnapshotServiceTest {
         }
 
         fun revertEntry(e: FileDiffEntry) {
-            val p = "$basePath/${e.path}"
+            val p = safePath(e.path) ?: return
             when (e.status) {
                 ChangeStatus.MODIFIED -> e.originalContent?.let { File(p).writeBytes(it) }
                 ChangeStatus.ADDED -> File(p).delete()
@@ -604,6 +647,22 @@ class FileSnapshotServiceTest {
             ExclusionPatternMatcher.matches(r, mandatoryExDirs) ||
                 ExclusionPatternMatcher.matches(r, exDirs) ||
                 exPats.any { it.matches(r) }
+        private fun safePath(relativePath: String): String? {
+            val root = File(basePath).toPath().toAbsolutePath().normalize()
+            val candidate = root.resolve(relativePath).normalize()
+            return if (candidate.startsWith(root) && !containsSymbolicLink(relativePath)) candidate.toString() else null
+        }
+        private fun containsSymbolicLink(relativePath: String): Boolean {
+            val root = File(basePath).toPath().toAbsolutePath().normalize()
+            val candidate = root.resolve(relativePath).normalize()
+            if (!candidate.startsWith(root)) return true
+            var component = root
+            for (name in root.relativize(candidate)) {
+                component = component.resolve(name)
+                if (Files.isSymbolicLink(component)) return true
+            }
+            return false
+        }
         private fun empty() = InteractionDiff(0, System.currentTimeMillis(), emptyList())
         private fun sha256(d: ByteArray) = MessageDigest.getInstance("SHA-256").digest(d).joinToString("") { "%02x".format(it) }
     }

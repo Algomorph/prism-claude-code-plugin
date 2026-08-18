@@ -7,12 +7,17 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.dsl.builder.COLUMNS_LARGE
+import com.intellij.ui.dsl.builder.TopGap
 import com.intellij.ui.dsl.builder.bindIntValue
 import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel as dslPanel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("settings.title")) {
 
@@ -98,12 +103,37 @@ class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("setting
         }
 
         group(PrismBundle.message("settings.group.snapshot")) {
+            lateinit var excludedPatternsEditor: javax.swing.JTextArea
             row(PrismBundle.message("settings.excluded")) {
-                textField()
+                textArea()
                     .bindText(settings::excludedPatterns)
                     .columns(COLUMNS_LARGE)
-                    .comment(PrismBundle.message("settings.excluded.comment"))
+                    .applyToComponent {
+                        excludedPatternsEditor = this
+                        rows = 4
+                        lineWrap = true
+                        wrapStyleWord = true
+                    }
             }
+            row("") {
+                label("").applyToComponent {
+                    font = JBUI.Fonts.smallFont()
+                    foreground = UIUtil.getContextHelpForeground()
+                    fun updateHelp() {
+                        text = "<html>${PrismBundle.message("settings.excluded.comment")}<br>" +
+                            PrismBundle.message(
+                            "settings.excluded.count",
+                            AgentSettingsState.parseExcludedPatterns(excludedPatternsEditor.text).size,
+                            ) + "</html>"
+                    }
+                    updateHelp()
+                    excludedPatternsEditor.document.addDocumentListener(object : DocumentListener {
+                        override fun insertUpdate(event: DocumentEvent) = updateHelp()
+                        override fun removeUpdate(event: DocumentEvent) = updateHelp()
+                        override fun changedUpdate(event: DocumentEvent) = updateHelp()
+                    })
+                }
+            }.topGap(TopGap.NONE)
             row(PrismBundle.message("settings.max.file.size")) {
                 spinner(1..10240, 64)
                     .bindIntValue(settings::maxFileSizeKb)
