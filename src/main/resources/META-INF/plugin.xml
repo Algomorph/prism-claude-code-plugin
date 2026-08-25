@@ -49,6 +49,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+    <h2>v1.3.1 — CLI Command Arguments</h2>
+    <ul>
+        <li>Fix: Claude Code and Codex command settings now support optional arguments, including quoted paths with spaces</li>
+        <li>Fix: Prism validates the executable separately and preserves configured arguments when starting a session</li>
+    </ul>
     <h2>v1.3.0 — Codex Integration</h2>
     <ul>
         <li>New: <strong>Multi-agent</strong> — start Claude Code or Codex sessions from the same tool window</li>

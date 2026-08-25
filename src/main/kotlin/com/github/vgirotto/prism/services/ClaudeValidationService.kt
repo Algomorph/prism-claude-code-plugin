@@ -19,13 +19,16 @@ class ClaudeValidationService {
      * True if [configuredPath] (typically [AgentSettingsState.claudePath])
      * resolves to a runnable binary, either directly or via PATH lookup.
      */
-    fun isClaudeAvailable(configuredPath: String): Boolean = locator.canResolve(configuredPath)
+    fun isClaudeAvailable(configuredPath: String): Boolean = getClaudeCommand(configuredPath) != null
 
     /** Full path to the Claude CLI, or null if it cannot be located. */
     fun getClaudePath(): String? = locator.locate()
 
     /** Resolves [configuredPath] to a runnable binary, or null if it cannot. */
     fun getClaudePath(configuredPath: String): String? = locator.resolve(configuredPath)
+
+    /** Resolves a configured Claude command, including literal arguments. */
+    fun getClaudeCommand(configuredCommand: String): ResolvedCliCommand? = locator.resolveCommand(configuredCommand)
 
     /**
      * Validates Claude CLI version (basic check that it responds to help).

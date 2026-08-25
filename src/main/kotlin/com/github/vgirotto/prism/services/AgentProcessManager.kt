@@ -90,25 +90,23 @@ class AgentProcessManager(private val project: Project) : Disposable {
      * Creates a new agent session with its own PTY process.
      * Returns the session result containing the connector for the terminal widget.
      *
-     * [resolvedBinary] is the absolute path the availability preflight resolved, and is
-     * shell-quoted before being typed into the PTY. Falls back to the configured value,
-     * which may carry arguments and so is passed through verbatim.
+     * [resolvedCommand] is the absolute path and literal arguments the availability preflight
+     * resolved. Every token is shell-quoted before it is typed into the PTY.
      */
     fun createSession(
         sessionName: String = "Chat",
         cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
-        resolvedBinary: String? = null,
+        resolvedCommand: ResolvedCliCommand,
     ): SessionResult {
         val session = AgentSession(name = sessionName, cli = cli)
         loadModelFromAgentSettings(session)
         session.state = SessionState.STARTING
 
         val settings = AgentSettingsState.getInstance()
-        val binaryPath = resolvedBinary ?: settings.cliPath(cli)
+        val binaryPath = resolvedCommand.executable
         // `clear` runs after the shell echoes the line and before the agent paints, which
         // hides the prompt without racing the agent's first paint.
-        val launchCommand =
-            "clear; " + if (resolvedBinary != null) shellQuote(resolvedBinary) else binaryPath
+        val launchCommand = "clear; " + shellCommand(resolvedCommand)
         val shell = settings.shellPath
 
         val env = HashMap(System.getenv())
@@ -530,3 +528,7 @@ internal fun codexSubmitChunks(text: String): List<String>? {
  */
 internal fun shellQuote(path: String): String =
     "'" + path.replace("'", "'\\''") + "'"
+
+/** Returns a shell-safe command line by quoting every executable and argument separately. */
+internal fun shellCommand(command: ResolvedCliCommand): String =
+    (listOf(command.executable) + command.arguments).joinToString(separator = " ", transform = ::shellQuote)

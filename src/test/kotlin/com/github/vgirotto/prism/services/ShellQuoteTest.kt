@@ -28,4 +28,17 @@ class ShellQuoteTest {
     fun `shell metacharacters are not interpreted`() {
         assertEquals("'/opt/a b;rm -rf x/codex'", shellQuote("/opt/a b;rm -rf x/codex"))
     }
+
+    @Test
+    fun `command quotes every configured argument independently`() {
+        assertEquals(
+            "'/opt/Claude Code/claude' '--plugin-dir' '/tmp/my plugin' ';rm'",
+            shellCommand(
+                ResolvedCliCommand(
+                    "/opt/Claude Code/claude",
+                    listOf("--plugin-dir", "/tmp/my plugin", ";rm"),
+                ),
+            ),
+        )
+    }
 }

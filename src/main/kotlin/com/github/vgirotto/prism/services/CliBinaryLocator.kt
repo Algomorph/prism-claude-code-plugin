@@ -83,6 +83,20 @@ class CliBinaryLocator(
         }
     }
 
+    /**
+     * Resolves a configured command, preserving its literal arguments for the caller to launch.
+     * Shell syntax is not evaluated by [CliCommandParser].
+     */
+    fun resolveCommand(configuredCommand: String): ResolvedCliCommand? =
+        when (val parsed = CliCommandParser.parse(configuredCommand, binaryName)) {
+            is CliCommandParser.Result.Invalid -> {
+                log.debug("Invalid $binaryName command: ${parsed.reason}")
+                null
+            }
+            is CliCommandParser.Result.Success ->
+                resolve(parsed.executable)?.let { ResolvedCliCommand(it, parsed.arguments) }
+        }
+
     /** True if [resolve] would return a non-null path for [configuredPath]. */
     fun canResolve(configuredPath: String): Boolean = resolve(configuredPath) != null
 

@@ -7,6 +7,7 @@ import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ClaudeValidationService
 import com.github.vgirotto.prism.services.CodexValidationService
 import com.github.vgirotto.prism.services.FileSnapshotService
+import com.github.vgirotto.prism.services.ResolvedCliCommand
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -187,28 +188,27 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         // the EDT once the CLI is confirmed present.
         val settings = AgentSettingsState.getInstance()
         ApplicationManager.getApplication().executeOnPooledThread {
-            // Keep the resolved absolute path, not just a yes/no: the session
-            // launches this exact binary instead of re-resolving the configured
-            // string through the shell's own PATH.
+            // Keep the resolved command, not just a yes/no: the session launches this
+            // exact binary with the configured literal arguments.
             val preflightStartedAtNanos = System.nanoTime()
-            val resolvedBinary = when (cli) {
+            val resolvedCommand = when (cli) {
                 AgentCli.CLAUDE ->
-                    ClaudeValidationService.getInstance().getClaudePath(settings.claudePath)
+                    ClaudeValidationService.getInstance().getClaudeCommand(settings.claudePath)
                 AgentCli.CODEX ->
-                    CodexValidationService.getInstance().getCodexPath(settings.codexPath)
+                    CodexValidationService.getInstance().getCodexCommand(settings.codexPath)
             }
             val preflightMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - preflightStartedAtNanos)
             log.info(
                 "timing: ${cli.name.lowercase()} preflight resolve took $preflightMs ms" +
-                    " → ${resolvedBinary ?: "not found"}"
+                    " → ${resolvedCommand?.executable ?: "not found"}"
             )
             ApplicationManager.getApplication().invokeLater {
-                if (resolvedBinary == null) {
+                if (resolvedCommand == null) {
                     log.warn("${cli.name.lowercase()} CLI not found at configured path or on PATH")
                     showCliNotFoundError(project, toolWindow, cli)
                     return@invokeLater
                 }
-                buildSessionTab(project, toolWindow, changesVisible, cli, resolvedBinary)
+                buildSessionTab(project, toolWindow, changesVisible, cli, resolvedCommand)
             }
         }
     }
@@ -223,7 +223,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         toolWindow: ToolWindow,
         changesVisible: Boolean,
         cli: AgentCli,
-        resolvedBinary: String,
+        resolvedCommand: ResolvedCliCommand,
     ) {
         val disposable = Disposer.newDisposable("AgentSession")
         Disposer.register(toolWindow.disposable, disposable)
@@ -365,7 +365,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
                     val pm = AgentProcessManager.getInstance(project)
-                    val result = pm.createSession(sessionName, cli, resolvedBinary)
+                    val result = pm.createSession(sessionName, cli, resolvedCommand)
 
                     content.putUserData(SESSION_ID_KEY, result.sessionId)
                     pm.setActiveSession(result.sessionId)

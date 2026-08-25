@@ -22,13 +22,16 @@ class CodexValidationService {
      * True if [configuredPath] (typically [AgentSettingsState.codexPath])
      * resolves to a runnable binary, either directly or via PATH lookup.
      */
-    fun isCodexAvailable(configuredPath: String): Boolean = locator.canResolve(configuredPath)
+    fun isCodexAvailable(configuredPath: String): Boolean = getCodexCommand(configuredPath) != null
 
     /** Full path to the Codex CLI, or null if it cannot be located. */
     fun getCodexPath(): String? = locator.locate()
 
     /** Resolves [configuredPath] to a runnable binary, or null if it cannot. */
     fun getCodexPath(configuredPath: String): String? = locator.resolve(configuredPath)
+
+    /** Resolves a configured Codex command, including literal arguments. */
+    fun getCodexCommand(configuredCommand: String): ResolvedCliCommand? = locator.resolveCommand(configuredCommand)
 
     fun validateCodexVersion(): Boolean {
         return try {

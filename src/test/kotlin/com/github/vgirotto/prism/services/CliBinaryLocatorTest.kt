@@ -162,6 +162,33 @@ class CliBinaryLocatorTest {
     }
 
     @Test
+    fun `resolveCommand preserves arguments after resolving a bare executable`(@TempDir tmp: Path) {
+        val onPath = Files.createDirectory(tmp.resolve("bin"))
+        val executable = executable(onPath, "fake-cli")
+        val locator = locator(
+            binaryName = "fake-cli",
+            candidatePaths = emptyList(),
+            pathEntries = listOf(onPath.toString()),
+        )
+
+        assertEquals(
+            ResolvedCliCommand(executable.toString(), listOf("--plugin-dir", "/tmp/my plugin")),
+            locator.resolveCommand("fake-cli --plugin-dir \"/tmp/my plugin\""),
+        )
+    }
+
+    @Test
+    fun `resolveCommand preserves arguments after resolving an absolute executable`(@TempDir tmp: Path) {
+        val executable = executable(tmp, "fake-cli")
+        val locator = locator(binaryName = "fake-cli", candidatePaths = emptyList())
+
+        assertEquals(
+            ResolvedCliCommand(executable.toString(), listOf("--verbose")),
+            locator.resolveCommand("${executable} --verbose"),
+        )
+    }
+
+    @Test
     fun `an install mid-session is picked up by the next lookup`(@TempDir tmp: Path) {
         val fake = tmp.resolve("fake-cli")
         val locator = locator(binaryName = "fake-cli", candidatePaths = listOf(fake.toString()))
