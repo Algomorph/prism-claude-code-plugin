@@ -28,7 +28,6 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
-import com.github.vgirotto.prism.terminal.PrismTerminalSettingsProvider
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.ContentManagerEvent
@@ -50,6 +49,7 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.SwingConstants
+import org.jetbrains.plugins.terminal.JBTerminalSystemSettingsProvider
 
 class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
@@ -240,7 +240,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         Disposer.register(toolWindow.disposable, disposable)
 
         try {
-            val settingsProvider = PrismTerminalSettingsProvider()
+            val settingsProvider = JBTerminalSystemSettingsProvider()
             val terminalWidget = JBTerminalWidget(project, settingsProvider, disposable)
 
             // The picker takes focus so the press that closes it never reaches the terminal;

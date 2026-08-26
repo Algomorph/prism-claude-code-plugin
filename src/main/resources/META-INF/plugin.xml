@@ -51,7 +51,7 @@
     <change-notes><![CDATA[
     <h2>v1.3.1 — Terminal Font, Stability &amp; Security Fixes</h2>
     <ul>
-        <li>New: the embedded terminal now follows the IDE's <strong>terminal font settings</strong> — family, size, and line spacing from Settings &gt; Tools &gt; Terminal, instead of the editor's console font at an unscaled size (which rendered tiny on HiDPI displays)</li>
+        <li>New: the embedded terminal now uses the IDE terminal's own settings — <strong>font family, size, and line spacing</strong> from Settings &gt; Tools &gt; Terminal, plus Ctrl+wheel zoom and live updates — instead of the editor's console font at an unscaled size (which rendered tiny on HiDPI displays)</li>
         <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
         <li>Fix: Claude Code and Codex command settings now support optional arguments, including quoted paths with spaces</li>
         <li>Fix: Prism validates the executable separately and preserves configured arguments when starting a session</li>

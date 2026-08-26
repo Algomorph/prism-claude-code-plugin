@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Terminal font**: the terminal in Prism now uses the font settings of the IDE terminal. Set the font family, the font size, and the line spacing in Settings > Tools > Terminal > Font Settings. Prism used the console font of the editor before, and it ignored a terminal font that you set. On a HiDPI display, the text was also too small. Prism delegates the font, the font size, and the line spacing to the settings provider the IDE terminal itself uses, built through the terminal plugin's classloader because that class is not on the 2024.3 API baseline; each delegate falls back to the platform base class when the provider is absent, so the tuned shortcut and paste behavior are unchanged.
+- **Terminal font and terminal settings**: the Prism terminal now uses the IDE terminal's own settings provider, so the font family, font size, and line spacing from Settings > Tools > Terminal > Font Settings apply — along with Ctrl+wheel zoom, live updates when those settings change, and the mouse-reporting, bell, and shortcut-override preferences set on that page. Prism previously used the editor's console font at an unscaled size, which ignored a terminal font you had set and rendered tiny on HiDPI displays.
 - **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry, which opens the IDE's terminal settings page — found by its configurable class, so the lookup is language-independent, falling back to the page's display name if that class is absent. The gear icon in the toolbar continues to open the settings of Prism.
 
 ### Fixed
