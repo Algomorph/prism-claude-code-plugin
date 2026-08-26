@@ -5,12 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.1] — 2026-08-26
+## [1.3.2] — Not yet published
 
 ### Added
 
 - **Terminal font and terminal settings**: the Prism terminal now uses the IDE terminal's own settings provider, so the font family, font size, and line spacing from Settings > Tools > Terminal > Font Settings apply — along with Ctrl+wheel zoom, live updates when those settings change, and the mouse-reporting, bell, and shortcut-override preferences set on that page. Prism previously used the editor's console font at an unscaled size, which ignored a terminal font you had set and rendered tiny on HiDPI displays.
 - **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry, which opens the IDE's terminal settings page. The page is matched on its configurable ID, which is stable across releases and independent of the IDE's display language. The gear icon in the toolbar continues to open the settings of Prism.
+
+## [1.3.1] — 2026-08-26
 
 ### Fixed
 
