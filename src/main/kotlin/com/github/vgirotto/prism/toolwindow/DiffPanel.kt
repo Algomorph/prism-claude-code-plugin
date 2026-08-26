@@ -21,6 +21,7 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -288,21 +289,21 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
         ): Component {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
             if (value is FileDiffEntry) {
-                val fileName = File(value.path).name
-                val parentPath = File(value.path).parent?.let { " $it" } ?: ""
+                val rawFileName = File(value.path).name
                 val idx = currentInteractionIndex()
                 val isReverted = revertedFiles[idx]?.contains(value.path) == true
 
-                // File type icon
-                val fileIcon = FileTypeManager.getInstance().getFileTypeByFileName(fileName).icon
-                icon = fileIcon
+                // File type icon (looked up from the raw name; escaping is only for HTML display)
+                icon = FileTypeManager.getInstance().getFileTypeByFileName(rawFileName).icon
+
+                text = renderEntryHtml(value.path, isReverted)
 
                 if (isReverted) {
-                    text = "<html><s>$fileName</s> <font color='gray'>$parentPath (reverted)</font></html>"
                     if (!isSelected) foreground = JBColor.GRAY
-                    toolTipText = "${value.path} — reverted"
+                    // Static prefix ensures the tooltip never starts with "<html>", so Swing
+                    // can never mistake an attacker-chosen file name for an HTML tooltip.
+                    toolTipText = "Reverted — ${value.path}"
                 } else {
-                    text = "<html>$fileName <font color='gray'>$parentPath</font></html>"
                     toolTipText = "Click to open diff for ${value.path}"
                     if (!isSelected) {
                         foreground = when (value.status) {
@@ -317,5 +318,23 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
             }
             return this
         }
+    }
+}
+
+/**
+ * Builds the HTML shown for a file entry in the changes list. [path] may come from an AI
+ * agent that can create/rename files with arbitrary names, so both the file name and parent
+ * directory are XML-entity-escaped before being embedded in the Swing HTML text — otherwise a
+ * crafted name (e.g. containing `<img src=...>`) would be parsed as real markup by Swing's
+ * HTML renderer.
+ */
+internal fun renderEntryHtml(path: String, isReverted: Boolean): String {
+    val file = File(path)
+    val fileName = StringUtil.escapeXmlEntities(file.name)
+    val parentPath = file.parent?.let { " ${StringUtil.escapeXmlEntities(it)}" } ?: ""
+    return if (isReverted) {
+        "<html><s>$fileName</s> <font color='gray'>$parentPath (reverted)</font></html>"
+    } else {
+        "<html>$fileName <font color='gray'>$parentPath</font></html>"
     }
 }

@@ -5,12 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.1] — 2026-08-25
+## [1.3.1] — 2026-08-26
 
 ### Fixed
 
 - **Custom CLI arguments**: Claude Code and Codex command settings now accept optional arguments, including quoted paths with spaces. Prism validates the executable separately and preserves each argument when starting the session (fixes #13).
 - **Reordering chat tabs**: dragging a tab to a new position no longer freezes it. The platform reorders a tab by removing its content and re-adding it at the new index, which Prism read as the tab being closed and used as the cue to kill that session's agent process — the tab came back with its terminal still painted but nothing running behind it. Session teardown is now tied to the tab actually being disposed, which only a real close does.
+- **Changes panel HTML injection**: file names shown in the Agent Changes panel (list label and tooltip) are now escaped before being rendered as HTML, so a file created or renamed with characters like `<`, `>`, or `&` — including by an AI agent acting on the project — can no longer inject markup or trigger unintended content in the panel.
 
 ## [1.3.0] — 2026-08-18
 

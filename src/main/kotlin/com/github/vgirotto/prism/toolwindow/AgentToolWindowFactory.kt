@@ -23,6 +23,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -480,7 +481,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         val label = JLabel(
             "<html><center>" +
                 "<h3>${PrismBundle.message("toolwindow.error.init")}</h3>" +
-                "<p>${PrismBundle.message("toolwindow.error.label", error)}</p>" +
+                "<p>${PrismBundle.message("toolwindow.error.label", StringUtil.escapeXmlEntities(error))}</p>" +
                 "<p>${PrismBundle.message("toolwindow.error.settings")}</p>" +
                 "</center></html>",
             SwingConstants.CENTER

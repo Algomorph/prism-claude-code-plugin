@@ -49,11 +49,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h2>v1.3.1 — CLI Command Arguments</h2>
+    <h2>v1.3.1 — Stability &amp; Security Fixes</h2>
     <ul>
         <li>Fix: Claude Code and Codex command settings now support optional arguments, including quoted paths with spaces</li>
         <li>Fix: Prism validates the executable separately and preserves configured arguments when starting a session</li>
         <li>Fix: reordering chat tabs by dragging no longer freezes the dragged tab — its agent session survives the move</li>
+        <li>Fix: file names in the Agent Changes panel (list label and tooltip) are escaped before being rendered as HTML, preventing markup injection from crafted file names</li>
     </ul>
     <h2>v1.3.0 — Codex Integration</h2>
     <ul>
