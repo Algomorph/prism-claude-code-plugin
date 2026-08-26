@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Custom CLI arguments**: Claude Code and Codex command settings now accept optional arguments, including quoted paths with spaces. Prism validates the executable separately and preserves each argument when starting the session (fixes #13).
+- **Reordering chat tabs**: dragging a tab to a new position no longer freezes it. The platform reorders a tab by removing its content and re-adding it at the new index, which Prism read as the tab being closed and used as the cue to kill that session's agent process — the tab came back with its terminal still painted but nothing running behind it. Session teardown is now tied to the tab actually being disposed, which only a real close does.
 
 ## [1.3.0] — 2026-08-18
 

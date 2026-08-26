@@ -43,6 +43,7 @@ import java.awt.image.RenderedImage
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import javax.swing.JLabel
 import javax.swing.JPanel
@@ -117,7 +118,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
         toolWindow.setTitleActions(listOf(newSessionAction, historyAction, toggleChangesAction))
 
-        // Listen for tab selection changes
+        // Listen for tab selection changes. Session teardown is deliberately not wired
+        // here — see the content disposer in buildSessionTab.
         toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
             override fun selectionChanged(event: ContentManagerEvent) {
                 val sessionId = event.content.getUserData(SESSION_ID_KEY)
@@ -125,11 +127,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     AgentProcessManager.getInstance(project).setActiveSession(sessionId)
                 }
                 event.content.getUserData(DIFF_PANEL_KEY)?.refreshDiff()
-            }
-
-            override fun contentRemoved(event: ContentManagerEvent) {
-                val sessionId = event.content.getUserData(SESSION_ID_KEY) ?: return
-                AgentProcessManager.getInstance(project).destroySession(sessionId)
             }
         })
 
@@ -358,6 +355,22 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             content.isCloseable = true
             content.putUserData(DIFF_PANEL_KEY, diffPanel)
 
+            // The session lives and dies with the tab, and only tab *disposal* means the
+            // tab is gone. Reordering tabs by dragging one removes its Content with
+            // dispose = false and re-adds the same instance at the new index, so tearing
+            // the session down on ContentManagerListener.contentRemoved killed the dragged
+            // tab's PTY: the tab came back with its terminal painted but frozen, since
+            // nothing was left on the other end of it. Every real close path (tab X, Close
+            // Tab, Close All) removes with dispose = true, which runs this disposer.
+            val tabClosed = AtomicBoolean(false)
+            content.setDisposer {
+                tabClosed.set(true)
+                content.getUserData(SESSION_ID_KEY)?.let { sessionId ->
+                    AgentProcessManager.getInstance(project).destroySession(sessionId)
+                }
+                Disposer.dispose(disposable)
+            }
+
             toolWindow.contentManager.addContent(content)
             toolWindow.contentManager.setSelectedContent(content)
 
@@ -368,6 +381,15 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     val result = pm.createSession(sessionName, cli, resolvedCommand)
 
                     content.putUserData(SESSION_ID_KEY, result.sessionId)
+
+                    // The tab can be closed while the PTY is still spawning, before the
+                    // session ID the disposer looks for exists. Tear it down here instead
+                    // of leaving an orphaned agent process behind.
+                    if (tabClosed.get()) {
+                        pm.destroySession(result.sessionId)
+                        return@executeOnPooledThread
+                    }
+
                     pm.setActiveSession(result.sessionId)
 
                     ApplicationManager.getApplication().invokeLater {
