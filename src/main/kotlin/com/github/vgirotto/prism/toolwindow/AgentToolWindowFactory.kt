@@ -451,10 +451,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         historyPanel.loadHistory()
     }
 
-    /** Opens Settings > Tools > Terminal, where the font settings the terminal follows live. */
     private fun openTerminalSettings(project: Project) {
-        // Matched on the configurable's ID: its implementation class has moved between
-        // releases and its display name is localized.
+        // Matched on ID: the page's implementation class moves between releases, and its name is localized.
         ShowSettingsUtil.getInstance().showSettingsDialog(
             project,
             { it is SearchableConfigurable && it.id == TERMINAL_CONFIGURABLE_ID },
