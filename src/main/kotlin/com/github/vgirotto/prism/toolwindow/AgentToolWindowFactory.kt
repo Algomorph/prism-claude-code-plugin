@@ -17,6 +17,8 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.options.SearchableConfigurable
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -58,6 +60,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     companion object {
         val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
         val DIFF_PANEL_KEY = Key.create<DiffPanel>("AgentDiffPanel")
+
+        private const val TERMINAL_CONFIGURABLE_ID = "terminal"
 
         private var sessionCounter = 0
 
@@ -119,8 +123,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
         toolWindow.setTitleActions(listOf(newSessionAction, historyAction, toggleChangesAction))
 
-        // "Font Settings" entry in the tool window's options (⋮) menu — jumps to
-        // the IDE's terminal font settings, which the embedded terminal follows.
         val fontSettingsAction = object : DumbAwareAction(
             PrismBundle.message("toolwindow.font.settings"),
             PrismBundle.message("toolwindow.font.settings.desc"),
@@ -449,22 +451,15 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         historyPanel.loadHistory()
     }
 
-    /**
-     * Open the IDE's terminal settings page (Tools > Terminal), where the font
-     * settings the embedded terminal follows live. Navigates by the terminal
-     * configurable class when present (locale-independent); falls back to
-     * selecting it by display name.
-     */
+    /** Opens Settings > Tools > Terminal, where the font settings the terminal follows live. */
     private fun openTerminalSettings(project: Project) {
-        val util = com.intellij.openapi.options.ShowSettingsUtil.getInstance()
-        try {
-            @Suppress("UNCHECKED_CAST")
-            val configurable = Class.forName("org.jetbrains.plugins.terminal.TerminalOptionsConfigurable")
-                as Class<out com.intellij.openapi.options.Configurable>
-            util.showSettingsDialog(project, configurable)
-        } catch (_: Throwable) {
-            util.showSettingsDialog(project, "Terminal")
-        }
+        // Matched on the configurable's ID: its implementation class has moved between
+        // releases and its display name is localized.
+        ShowSettingsUtil.getInstance().showSettingsDialog(
+            project,
+            { it is SearchableConfigurable && it.id == TERMINAL_CONFIGURABLE_ID },
+            null
+        )
     }
 
     private fun showCliNotFoundError(project: Project, toolWindow: ToolWindow, cli: AgentCli) {
