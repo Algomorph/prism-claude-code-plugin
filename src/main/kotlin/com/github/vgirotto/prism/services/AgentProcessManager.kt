@@ -196,7 +196,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
                     // this Claude does not support it (or the agent is Codex, whose transcript
                     // wiring is separate), launch bare; the transcript pane degrades gracefully
                     // and the terminal strip keeps working.
-                    val flag = if (cli == AgentCli.CLAUDE && deterministicSessionsSupported()) {
+                    val flag = if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
                         session.conversationId = session.id
                         " --session-id ${session.id}"
                     } else ""
@@ -218,23 +218,30 @@ class AgentProcessManager(private val project: Project) : Disposable {
         return SessionResult(session.id, process, connector)
     }
 
-    @Volatile private var cachedDeterministicSupport: Boolean? = null
+    /** `--session-id` capability per resolved executable, so a changed CLI path is re-probed. */
+    private val deterministicSupportByExecutable = ConcurrentHashMap<String, Boolean>()
 
     /** Public accessor for the cached `--session-id` capability probe: the transcript pane
      *  shows an explicit "unavailable" state when this is false (design §6.5, R19). */
-    fun isDeterministicSessionSupported(): Boolean = deterministicSessionsSupported()
+    fun isDeterministicSessionSupported(command: ResolvedCliCommand): Boolean =
+        deterministicSessionsSupported(command)
 
-    /** Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19). */
-    private fun deterministicSessionsSupported(): Boolean {
-        cachedDeterministicSupport?.let { return it }
-        val path = AgentSettingsState.getInstance().claudePath
-        val supported = try {
-            ClaudeValidationService.getInstance().supportsDeterministicSessions(path)
-        } catch (_: Exception) {
-            false
+    /**
+     * Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19).
+     *
+     * Probes the executable the availability preflight resolved, not the raw setting: the
+     * setting may carry arguments, and a bare name may not be on the IDE's own PATH, and
+     * either would make the probe fail and silently drop the session identity.
+     */
+    private fun deterministicSessionsSupported(command: ResolvedCliCommand): Boolean {
+        if (selectsConversation(command.arguments)) return false
+        return deterministicSupportByExecutable.getOrPut(command.executable) {
+            try {
+                ClaudeValidationService.getInstance().supportsDeterministicSessions(command.executable)
+            } catch (_: Exception) {
+                false
+            }
         }
-        cachedDeterministicSupport = supported
-        return supported
     }
 
     private fun onUserInput(session: AgentSession) {
@@ -584,6 +591,17 @@ internal fun codexSubmitChunks(text: String): List<String>? {
  */
 internal fun shellQuote(path: String): String =
     "'" + path.replace("'", "'\\''") + "'"
+
+/** Claude options that already pick the conversation a session opens. */
+private val CONVERSATION_SELECTING_ARGS = setOf("--session-id", "-c", "--continue", "-r", "--resume")
+
+/**
+ * True when the configured Claude [arguments] already pick the conversation, so Prism must not
+ * add `--session-id`: Claude rejects it next to `--continue`/`--resume` (without
+ * `--fork-session`), and the conversation file would not be `<session id>.jsonl` regardless.
+ */
+internal fun selectsConversation(arguments: List<String>): Boolean =
+    arguments.any { it.substringBefore('=') in CONVERSATION_SELECTING_ARGS }
 
 /** Returns a shell-safe command line by quoting every executable and argument separately. */
 internal fun shellCommand(command: ResolvedCliCommand): String =
