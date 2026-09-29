@@ -46,6 +46,82 @@ class ClaudeValidationService {
     }
 
     /**
+     * Runtime-compatibility gate for the hybrid chat shell (design §6.5, §9, R19). The
+     * feature depends on deterministic session identity (`claude --session-id <uuid>`) and
+     * the tested JSONL schema. The **capability probe is authoritative** (does `--help`
+     * advertise `--session-id`?); the version string is only a fallback. When this returns
+     * false the strip/terminal keep working and the transcript pane shows an explicit
+     * "unavailable for this CLI version" state — never a guessed or broken file.
+     */
+    fun supportsDeterministicSessions(claudeCommand: String = "claude"): Boolean {
+        // Primary: capability probe.
+        val help = runProbe(listOf(claudeCommand, "--help"), 8)
+        if (help != null && help.contains("--session-id")) {
+            log.debug("Claude advertises --session-id — deterministic sessions supported")
+            return true
+        }
+        // Fallback: version floor — probe the SAME configured command, not PATH's claude.
+        return VersionGate.meetsMinimumVersion(getClaudeVersion(claudeCommand))
+    }
+
+    /** Parse the semantic version from `claude --version` (e.g. "2.1.210 (Claude Code)"). */
+    fun getClaudeVersion(claudeCommand: String = "claude"): String? {
+        val out = runProbe(listOf(claudeCommand, "--version"), 5) ?: return null
+        return Regex("""(\d+)\.(\d+)\.(\d+)""").find(out)?.value
+    }
+
+    /**
+     * Run a short-lived probe command and return its combined output, or null on failure.
+     * The output is drained on a daemon thread so a child that never closes stdout cannot
+     * block us past [timeoutSec]; on timeout the process is force-killed (review #11 — a
+     * bare `readText()` before `waitFor` can hang indefinitely).
+     */
+    private fun runProbe(command: List<String>, timeoutSec: Long): String? {
+        return try {
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val sb = StringBuilder()
+            val drain = Thread {
+                try {
+                    process.inputStream.bufferedReader().use { r -> r.forEachLine { sb.appendLine(it) } }
+                } catch (_: Exception) { /* stream closed on kill */ }
+            }.apply { isDaemon = true; start() }
+            val completed = process.waitFor(timeoutSec, TimeUnit.SECONDS)
+            if (!completed) {
+                process.destroyForcibly()
+                log.debug("Probe timed out: ${command.joinToString(" ")}")
+                return null
+            }
+            drain.join(1000)
+            sb.toString()
+        } catch (e: Exception) {
+            log.debug("Probe failed: ${command.joinToString(" ")}", e)
+            null
+        }
+    }
+
+    object VersionGate {
+        /** Tentative floor set in the Group 0 spike (first schema carrying uuid/parentUuid). */
+        const val MIN_SUPPORTED_VERSION = "2.1.193"
+
+        fun meetsMinimumVersion(version: String?): Boolean {
+            if (version == null) return false
+            return compareVersions(version, MIN_SUPPORTED_VERSION) >= 0
+        }
+
+        /** Numeric dotted-version comparison; returns <0, 0, >0. */
+        fun compareVersions(a: String, b: String): Int {
+            val pa = a.split(".").mapNotNull { it.toIntOrNull() }
+            val pb = b.split(".").mapNotNull { it.toIntOrNull() }
+            for (i in 0 until maxOf(pa.size, pb.size)) {
+                val x = pa.getOrElse(i) { 0 }
+                val y = pb.getOrElse(i) { 0 }
+                if (x != y) return x.compareTo(y)
+            }
+            return 0
+        }
+    }
+
+    /**
      * Checks if a process is still alive and reports errors if dead.
      * @return true if process is alive, false if dead
      */
