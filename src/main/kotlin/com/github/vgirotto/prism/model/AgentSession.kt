@@ -1,6 +1,8 @@
 package com.github.vgirotto.prism.model
 
 import com.github.vgirotto.prism.services.AgentTtyConnector
+import com.github.vgirotto.prism.services.session.SessionIdentity
+import com.github.vgirotto.prism.services.session.TabSessionFiles
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import java.util.Timer
@@ -34,6 +36,15 @@ class AgentSession(
 
     /** Monotonic reading taken as the session launch begins; 0 until it does. */
     @Volatile var launchStartedAtNanos: Long = 0L
+
+    /**
+     * The exact conversation this session shows, once known: the agent reports it on startup
+     * and on every switch (`/resume`, `/clear`, `/new`). Null while unknown; never guessed.
+     */
+    @Volatile var identity: SessionIdentity? = null
+
+    /** This session's private directory (the agent's hook events), deleted with the session. */
+    @Volatile var tabFiles: TabSessionFiles? = null
 
     /** Guards the one-shot "first output" startup timing log. */
     @Volatile var firstOutputLogged: Boolean = false
@@ -92,6 +103,7 @@ class AgentSession(
         } catch (_: Exception) {}
         process = null
         connector = null
+        try { tabFiles?.delete() } catch (_: Exception) {}
         state = SessionState.STOPPED
     }
 }

@@ -1,0 +1,114 @@
+package com.github.vgirotto.prism.services.session
+
+import java.text.BreakIterator
+
+/**
+ * Reads the Codex terminal title Prism asks for with
+ * `-c tui.terminal_title=["thread-id","thread-name"]` (verified against codex-cli 0.159.0 and its
+ * tagged source, `codex-rs/tui/src/chatwidget/status_surfaces.rs`).
+ *
+ * Codex renders that selection as:
+ * ```
+ * 01a0edbb-4501-7591-82b7-36c4c...               unnamed (new thread, or after /new)
+ * 01a0edbb-4501-7591-82b7-36c4c... ⠋ | ⠋         a name is being generated
+ * 01a0edbb-4501-7591-82b7-36c4c... | Reply ok    named (generated, /rename, or /resume)
+ * ```
+ *  - Each item is cut to a grapheme budget, the last three of which become `...`: the thread id
+ *    to [ID_MAX_GRAPHEMES], the name to [NAME_MAX_GRAPHEMES]. Items are joined with ` | `.
+ *  - While a name is being generated, one spinner frame is appended to each item after a space
+ *    (or stands alone for an item that has no value yet).
+ *  - When Codex waits for approval, it swaps in `[ ! ] Action Required | …`, which is not this
+ *    shape and so produces no reading: the tab keeps its name until the normal title returns.
+ *
+ * Only that shape is accepted: the session runs inside the user's login shell, which sets titles
+ * of its own before and after Codex runs.
+ */
+object CodexTitleParser {
+
+    const val ID_MAX_GRAPHEMES = 32
+    const val NAME_MAX_GRAPHEMES = 48
+    const val ELLIPSIS = "..."
+    private const val SEPARATOR = " | "
+    private const val FULL_ID_LENGTH = 36
+
+    /** `TERMINAL_TITLE_SPINNER_FRAMES` in the 0.159 source. */
+    val SPINNER_FRAMES: Set<String> = setOf("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+
+    private val ID_ITEM = Regex("^[0-9a-f]{8}-[0-9a-f-]{1,28}(\\.\\.\\.)?$")
+
+    fun parse(title: String): TitleReading? {
+        val separator = title.indexOf(SEPARATOR)
+        val idItem = withoutSpinner(if (separator < 0) title else title.substring(0, separator))
+        if (!ID_ITEM.matches(idItem)) return null
+        val idValue = idItem.removeSuffix(ELLIPSIS)
+        val idHint = IdHint(
+            idValue,
+            isPrefix = idItem.endsWith(ELLIPSIS) || idValue.length < FULL_ID_LENGTH,
+        )
+        if (separator < 0) return TitleReading.Unnamed(idHint)
+
+        val name = withoutSpinner(title.substring(separator + SEPARATOR.length))
+        // `<id> |` alone, or `<id> ⠋ | ⠋`: the name is on its way, not absent.
+        if (name.isEmpty()) return null
+        return TitleReading.Named(name, truncated = isCutOff(name), idHint = idHint)
+    }
+
+    /**
+     * True when [name] is how Codex shows a name it cut off: exactly [NAME_MAX_GRAPHEMES] grapheme
+     * clusters ending in `...`. A shorter name that happens to end in `...` is the user's own.
+     */
+    fun isCutOff(name: String): Boolean =
+        name.endsWith(ELLIPSIS) && graphemeCount(name) == NAME_MAX_GRAPHEMES
+
+    /**
+     * [text] as Codex's title sanitizer would print it: control and invisible formatting
+     * characters removed, whitespace runs collapsed to one space, trimmed. Used to compare a full
+     * name from Codex's store with the cut-off text the title showed.
+     */
+    fun normalize(text: String): String {
+        val out = StringBuilder(text.length)
+        var pendingSpace = false
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            i += Character.charCount(cp)
+            if (Character.isWhitespace(cp) || Character.isSpaceChar(cp)) {
+                pendingSpace = out.isNotEmpty()
+                continue
+            }
+            if (isDisallowed(cp)) continue
+            if (pendingSpace) {
+                out.append(' ')
+                pendingSpace = false
+            }
+            out.appendCodePoint(cp)
+        }
+        return out.toString()
+    }
+
+    private fun withoutSpinner(item: String): String {
+        val trimmed = item.trim()
+        if (trimmed in SPINNER_FRAMES) return ""
+        val space = trimmed.lastIndexOf(' ')
+        if (space >= 0 && trimmed.substring(space + 1) in SPINNER_FRAMES) {
+            return trimmed.substring(0, space).trim()
+        }
+        return trimmed
+    }
+
+    private fun graphemeCount(text: String): Int {
+        val it = BreakIterator.getCharacterInstance()
+        it.setText(text)
+        var count = 0
+        while (it.next() != BreakIterator.DONE) count++
+        return count
+    }
+
+    /** `is_disallowed_terminal_title_char` in codex-rs/tui/src/terminal_title.rs. */
+    private fun isDisallowed(cp: Int): Boolean =
+        Character.isISOControl(cp) ||
+            cp == 0x00AD || cp == 0x034F || cp == 0x061C || cp == 0x180E ||
+            cp in 0x200B..0x200F || cp in 0x202A..0x202E || cp in 0x2060..0x206F ||
+            cp in 0xFE00..0xFE0F || cp == 0xFEFF || cp in 0xFFF9..0xFFFB ||
+            cp in 0x1BCA0..0x1BCA3 || cp in 0xE0100..0xE01EF
+}

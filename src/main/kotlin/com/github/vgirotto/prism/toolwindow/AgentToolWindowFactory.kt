@@ -5,15 +5,13 @@ import com.github.vgirotto.prism.icons.PrismIcons
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.AgentSettingsState
-import com.github.vgirotto.prism.services.ChatName
-import com.github.vgirotto.prism.services.ChatNameSource
-import com.github.vgirotto.prism.services.ChatNameWatcher
-import com.github.vgirotto.prism.services.ClaudeChatNameSource
 import com.github.vgirotto.prism.services.ClaudeValidationService
-import com.github.vgirotto.prism.services.CodexChatNameSource
 import com.github.vgirotto.prism.services.CodexValidationService
 import com.github.vgirotto.prism.services.FileSnapshotService
 import com.github.vgirotto.prism.services.ResolvedCliCommand
+import com.github.vgirotto.prism.services.session.ChatSessionTracker
+import com.github.vgirotto.prism.services.session.TabTitle
+import com.github.vgirotto.prism.services.session.newSessionStrategy
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -388,10 +386,9 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 }
             }
 
-            // `Chat #N` is the placeholder, not the name: neither CLI has recorded a title yet
-            // (Claude generates one after the first turn, Codex has nothing to derive one from
-            // until the user types), so the tab opens numbered and is renamed by the
-            // ChatNameWatcher installed once the session starts.
+            // `Chat #N` is the placeholder, not the name: the tab opens numbered and takes the
+            // name the agent shows in its terminal title as soon as it has one (see
+            // [ChatSessionTracker]); an agent title with no name puts the number back.
             val sessionName = nextSessionName()
             val content = toolWindow.contentManager.factory.createContent(
                 splitter, sessionName, false
@@ -420,6 +417,19 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 Disposer.dispose(disposable)
             }
 
+            // Follow the agent's session from its terminal title. The listener goes on before the
+            // terminal starts (below), so the first title — a resumed chat's name — is not missed.
+            val strategy = cli.newSessionStrategy()
+            val tracker = ChatSessionTracker(
+                strategy,
+                placeholder = sessionName,
+                show = { title -> applyTabTitle(content, cli, title) },
+            )
+            val terminal = terminalWidget.terminal
+            terminal.addApplicationTitleListener(tracker)
+            Disposer.register(disposable) { terminal.removeApplicationTitleListener(tracker) }
+            Disposer.register(disposable, tracker)
+
             toolWindow.contentManager.addContent(content)
             toolWindow.contentManager.setSelectedContent(content)
 
@@ -427,7 +437,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
                     val pm = AgentProcessManager.getInstance(project)
-                    val result = pm.createSession(sessionName, cli, resolvedCommand)
+                    val result = pm.createSession(sessionName, cli, resolvedCommand, strategy)
 
                     content.putUserData(SESSION_ID_KEY, result.sessionId)
 
@@ -440,25 +450,13 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     }
 
                     pm.setActiveSession(result.sessionId)
-
-                    // Resolve --session-id support off the EDT (the capability probe can block for
-                    // seconds). Only meaningful for Claude — Codex resolves its rollout another
-                    // way, so don't spawn the claude probe for a Codex session.
-                    val deterministicSupported = cli == AgentCli.CLAUDE &&
-                        try { pm.isDeterministicSessionSupported(resolvedCommand) } catch (_: Exception) { false }
+                    pm.getSession(result.sessionId)?.let(tracker::attach)
 
                     ApplicationManager.getApplication().invokeLater {
                         try {
                             terminalWidget.createTerminalSession(result.connector)
                             terminalWidget.start()
                             log.info("Agent session started: $sessionName [${result.sessionId}]")
-
-                            // Rename the tab from `Chat #N` to whatever the CLI calls this chat,
-                            // as soon as it has recorded a name (see [ChatNameWatcher]).
-                            installChatNameWatcher(
-                                project, disposable, content, cli,
-                                launchSessionId = if (deterministicSupported) result.sessionId else null,
-                            )
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
                             notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))
@@ -476,47 +474,14 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     }
 
     /**
-     * Watch for the name the CLI gives this chat and rename the tab when it appears, replacing
-     * the `Chat #N` placeholder (see [ChatNameWatcher] for the resolution rules).
-     *
-     * [launchSessionId] is the `--session-id` a Claude chat was launched with — the marker that
-     * says which conversation file is ours. Null means Prism has no per-chat identity to attribute
-     * a title to (a Claude build without `--session-id`), so the tab keeps its number rather than
-     * risk showing another chat's title. Codex needs no id: its rollout is resolved from the
-     * project by cwd + recency.
+     * Put [title] on the chat tab: the clipped name as the label, and the whole name plus the agent
+     * it belongs to as the tooltip. With no name, the tooltip is just the agent.
      */
-    private fun installChatNameWatcher(
-        project: Project,
-        parentDisposable: com.intellij.openapi.Disposable,
-        content: Content,
-        cli: AgentCli,
-        launchSessionId: String?,
-    ) {
-        val source: ChatNameSource = when (cli) {
-            AgentCli.CLAUDE -> {
-                val id = launchSessionId ?: return
-                val resolver = com.github.vgirotto.prism.chatshell.SessionResolver(project.basePath)
-                ClaudeChatNameSource({ resolver.projectDir()?.takeIf { it.isDirectory } }, id)
-            }
-            AgentCli.CODEX -> {
-                val resolver =
-                    com.github.vgirotto.prism.chatshell.CodexSessionResolver(project.basePath)
-                CodexChatNameSource { resolver.newestForProject() }
-            }
-        }
-        val watcher = ChatNameWatcher(source)
-        Disposer.register(parentDisposable, watcher)
-        watcher.start { name -> applyChatName(content, cli, name) }
-    }
-
-    /**
-     * Put [name] on the chat tab: the clipped form as the label, the full text plus the agent it
-     * belongs to as the tooltip (a truncated title is only useful if the whole one is reachable).
-     */
-    private fun applyChatName(content: Content, cli: AgentCli, name: ChatName) {
-        val label = name.display()
-        content.displayName = label
-        content.description = PrismBundle.message("toolwindow.tab.tooltip", cli.displayName(), name.text)
+    private fun applyTabTitle(content: Content, cli: AgentCli, title: TabTitle) {
+        content.displayName = title.label
+        content.description = title.name
+            ?.let { PrismBundle.message("toolwindow.tab.tooltip", cli.displayName(), it) }
+            ?: cli.displayName()
     }
 
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {
