@@ -114,11 +114,7 @@ class CodexSessionStoreTest {
     }
 
     @Test
-    fun `CODEX_HOME overrides the default home`() {
-        assertEquals(Path.of("/x/codex"), CodexSessionStore.defaultHome(mapOf("CODEX_HOME" to "/x/codex")))
-        assertEquals(
-            Path.of(System.getProperty("user.home"), ".codex"),
-            CodexSessionStore.defaultHome(mapOf("CODEX_HOME" to " ")),
-        )
+    fun `the default home is under the user's home`() {
+        assertEquals(Path.of(System.getProperty("user.home"), ".codex"), CodexSessionStore.userDefaultHome())
     }
 }

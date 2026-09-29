@@ -30,7 +30,7 @@ class ChatSessionTrackerTest {
         var events: IdentityEventSource? = null
         var resolveCalls = 0
 
-        override fun launchArguments(tab: TabSessionFiles, command: ResolvedCliCommand) = emptyList<String>()
+        override fun launchCommand(tab: TabSessionFiles, command: ResolvedCliCommand) = command
         override fun launchEnvironment() = emptyMap<String, String?>()
         override fun parseTitle(title: String) = parser(title)
         override fun identityEvents(tab: TabSessionFiles) = events

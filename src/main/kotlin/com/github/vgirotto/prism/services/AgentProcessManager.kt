@@ -205,10 +205,8 @@ class AgentProcessManager(private val project: Project) : Disposable {
                             if (session.identity == null) session.identity = SessionIdentity(session.id, null)
                             listOf("--session-id", session.id)
                         } else emptyList()
-                    val tracking = strategy.launchArguments(tabFiles, resolvedCommand)
-                    val launch = resolvedCommand.copy(
-                        arguments = resolvedCommand.arguments + sessionIdFlag + tracking
-                    )
+                    val base = resolvedCommand.copy(arguments = resolvedCommand.arguments + sessionIdFlag)
+                    val launch = strategy.launchCommand(tabFiles, base)
                     // `clear` runs after the shell echoes the line and before the agent paints,
                     // which hides the prompt without racing the agent's first paint.
                     val cmd = "clear; " + shellCommand(launch) + "\n"
@@ -217,7 +215,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
                     log.info(
                         "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
                             (if (sessionIdFlag.isEmpty()) "" else " (--session-id)") +
-                            (if (tracking.isEmpty()) "" else " (session tracking)")
+                            (if (launch == base) "" else " (session tracking)")
                     )
                 }
             } catch (e: Exception) {
