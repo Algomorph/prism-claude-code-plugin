@@ -166,10 +166,21 @@ class AgentProcessManager(private val project: Project) : Disposable {
             try {
                 Thread.sleep(500)
                 if (process.isAlive) {
-                    val cmd = "$launchCommand\n"
+                    // Deterministic session identity: for Claude, launch with `--session-id <id>`
+                    // so the conversation file is exactly <id>.jsonl, which is how the chat's
+                    // name is found. Gated on the runtime capability probe — if this Claude does
+                    // not support it (or the agent is Codex, which is resolved another way),
+                    // launch bare; the tab then keeps its number.
+                    val flag = if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
+                        " --session-id ${session.id}"
+                    } else ""
+                    val cmd = "$launchCommand$flag\n"
                     process.outputStream.write(cmd.toByteArray(StandardCharsets.UTF_8))
                     process.outputStream.flush()
-                    log.info("Sent ${cli.name.lowercase()} command to shell [${session.id}]")
+                    log.info(
+                        "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
+                            if (flag.isEmpty()) "" else " (--session-id)"
+                    )
                 }
             } catch (e: Exception) {
                 log.warn("Failed to send ${cli.name.lowercase()} command [${session.id}]", e)
@@ -179,6 +190,32 @@ class AgentProcessManager(private val project: Project) : Disposable {
         notifyStateListeners(session)
 
         return SessionResult(session.id, process, connector)
+    }
+
+    /** `--session-id` capability per resolved executable, so a changed CLI path is re-probed. */
+    private val deterministicSupportByExecutable = ConcurrentHashMap<String, Boolean>()
+
+    /** Public accessor for the cached `--session-id` capability probe: without it a Claude
+     *  chat has no per-chat identity, so the tab cannot be named after its conversation. */
+    fun isDeterministicSessionSupported(command: ResolvedCliCommand): Boolean =
+        deterministicSessionsSupported(command)
+
+    /**
+     * Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19).
+     *
+     * Probes the executable the availability preflight resolved, not the raw setting: the
+     * setting may carry arguments, and a bare name may not be on the IDE's own PATH, and
+     * either would make the probe fail and silently drop the session identity.
+     */
+    private fun deterministicSessionsSupported(command: ResolvedCliCommand): Boolean {
+        if (selectsConversation(command.arguments)) return false
+        return deterministicSupportByExecutable.getOrPut(command.executable) {
+            try {
+                ClaudeValidationService.getInstance().supportsDeterministicSessions(command.executable)
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 
     private fun onUserInput(session: AgentSession) {
@@ -528,6 +565,17 @@ internal fun codexSubmitChunks(text: String): List<String>? {
  */
 internal fun shellQuote(path: String): String =
     "'" + path.replace("'", "'\\''") + "'"
+
+/** Claude options that already pick the conversation a session opens. */
+private val CONVERSATION_SELECTING_ARGS = setOf("--session-id", "-c", "--continue", "-r", "--resume")
+
+/**
+ * True when the configured Claude [arguments] already pick the conversation, so Prism must not
+ * add `--session-id`: Claude rejects it next to `--continue`/`--resume` (without
+ * `--fork-session`), and the conversation file would not be `<session id>.jsonl` regardless.
+ */
+internal fun selectsConversation(arguments: List<String>): Boolean =
+    arguments.any { it.substringBefore('=') in CONVERSATION_SELECTING_ARGS }
 
 /** Returns a shell-safe command line by quoting every executable and argument separately. */
 internal fun shellCommand(command: ResolvedCliCommand): String =
