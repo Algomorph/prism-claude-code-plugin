@@ -49,10 +49,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h2>v1.3.2 — Terminal Font</h2>
+    <h2>v1.3.2 — Terminal Font + Hybrid Chat Shell</h2>
     <ul>
         <li>New: the embedded terminal now uses the IDE terminal's own settings — <strong>font family, size, and line spacing</strong> from Settings &gt; Tools &gt; Terminal, plus Ctrl+wheel zoom and live updates — instead of the editor's console font at an unscaled size (which rendered tiny on HiDPI displays)</li>
         <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
+        <li>New: a rendered <strong>transcript pane</strong> above the terminal — typeset <strong>KaTeX math</strong> (click to reveal &amp; copy byte-exact LaTeX), inline images, collapsible tool calls/results and thinking; all interaction stays in the terminal below, unchanged.</li>
+        <li>Live: the transcript follows the session as it runs, matches the IDE light/dark theme in place, and is localized (en/es/pt).</li>
+        <li>Safe: transcript content is rendered in-browser through escape → marked → DOMPurify → trusted nodes under a strict CSP; images are decoded/validated/re-encoded (no SVG, no remote loads).</li>
+        <li>Note: the live transcript pane currently requires a Claude CLI with <code>--session-id</code>; Codex sessions keep the terminal experience while transcript support lands.</li>
     </ul>
     <h2>v1.3.1 — Stability &amp; Security Fixes</h2>
     <ul>
