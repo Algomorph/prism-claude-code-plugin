@@ -47,6 +47,11 @@ class ChatSessionTracker(
     }
 
     private val lock = Any()
+    /**
+     * Held across one read-and-apply of identity events, so they apply in the order they were
+     * read. Never taken while holding [lock]; the file read stays outside [lock].
+     */
+    private val pollLock = Any()
     @Volatile private var disposed = false
 
     private var session: AgentSession? = null
@@ -107,8 +112,12 @@ class ChatSessionTracker(
         if (events != null) scheduler.inBackground(::pollEvents)
     }
 
-    /** Takes the newest identity event, if any arrived. */
-    fun pollEvents() {
+    /**
+     * Takes the newest identity event, if any arrived. The tick and title changes both call it;
+     * without [pollLock], a poll that read an older event could apply it after a later poll
+     * applied a newer one, and since both events are consumed, nothing would repair it.
+     */
+    fun pollEvents() = synchronized(pollLock) {
         val source = synchronized(lock) { events } ?: return
         val latest = try { source.poll() } catch (_: Exception) { null } ?: return
         synchronized(lock) {

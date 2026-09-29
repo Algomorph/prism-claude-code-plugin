@@ -122,6 +122,38 @@ class ChatSessionTrackerTest {
         assertEquals(listOf(TabTitle("Named chat", "Named chat")), shown)
     }
 
+    @Test
+    fun `overlapping polls apply events in the order they were read`() {
+        val insideFirstPoll = java.util.concurrent.CountDownLatch(1)
+        val releaseFirstPoll = java.util.concurrent.CountDownLatch(1)
+        val polls = java.util.concurrent.atomic.AtomicInteger()
+        val strategy = FakeStrategy(ClaudeTitleParser::parse).apply {
+            events = IdentityEventSource {
+                if (polls.incrementAndGet() == 1) {
+                    // The first poll reads the older event, then stalls before applying it.
+                    insideFirstPoll.countDown()
+                    releaseFirstPoll.await()
+                    SessionIdentity("older", "/p/older.jsonl")
+                } else {
+                    SessionIdentity("resumed", "/p/resumed.jsonl")
+                }
+            }
+        }
+        val tracker = tracker(strategy)
+        val session = session()
+        tracker.attach(session)
+
+        val first = Thread { tracker.pollEvents() }.apply { start() }
+        insideFirstPoll.await()
+        val second = Thread { tracker.pollEvents() }.apply { start() }
+        second.join(300) // Unserialized, the second poll applies its newer event here.
+        releaseFirstPoll.countDown()
+        first.join(5_000)
+        second.join(5_000)
+
+        assertEquals("resumed", session.identity?.sessionId)
+    }
+
     // ── Codex ──
 
     private val idA = "01a0edbb-4501-7591-82b7-36c4c0a1b2c3"
