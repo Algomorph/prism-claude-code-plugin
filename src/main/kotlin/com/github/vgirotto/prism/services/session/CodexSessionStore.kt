@@ -123,10 +123,8 @@ class CodexSessionStore(private val home: Path) {
         private const val ID_LENGTH = 36
         private val DAY_PATH: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd")
 
-        /** `$CODEX_HOME`, or `~/.codex` when it is not set. */
-        fun defaultHome(environment: Map<String, String> = System.getenv()): Path =
-            environment["CODEX_HOME"]?.takeIf { it.isNotBlank() }?.let { Paths.get(it) }
-                ?: Paths.get(System.getProperty("user.home"), ".codex")
+        /** `~/.codex`, Codex's home when `CODEX_HOME` and `$HOME` are both unset. */
+        fun userDefaultHome(): Path = Paths.get(System.getProperty("user.home"), ".codex")
 
         /**
          * The creation time a UUIDv7 (or a prefix of one) encodes: its first 12 hex digits, in

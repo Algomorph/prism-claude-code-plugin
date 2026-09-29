@@ -19,8 +19,11 @@ import java.nio.file.Path
  */
 interface AgentSessionStrategy {
 
-    /** Extra CLI arguments for this tab, added after the user's own [command] arguments. */
-    fun launchArguments(tab: TabSessionFiles, command: ResolvedCliCommand): List<String>
+    /**
+     * The command to type for this tab: [command] (the user's, with Prism's own flags) with what
+     * this strategy needs to follow the session. It may add arguments or wrap the command.
+     */
+    fun launchCommand(tab: TabSessionFiles, command: ResolvedCliCommand): ResolvedCliCommand
 
     /** Environment changes for the session's shell; a null value removes the variable. */
     fun launchEnvironment(): Map<String, String?>
@@ -52,6 +55,9 @@ class TabSessionFiles(val dir: Path) {
 
     val claudeEvents: Path get() = dir.resolve(ClaudeSessionHook.EVENTS_FILE)
 
+    /** The `CODEX_HOME` the launched Codex sees, as its shell recorded it. */
+    val codexHome: Path get() = dir.resolve("codex-home")
+
     fun create(): TabSessionFiles = apply { dir.toFile().mkdirs() }
 
     fun delete() {
@@ -67,5 +73,5 @@ class TabSessionFiles(val dir: Path) {
 /** A fresh strategy for one tab of this CLI. */
 fun AgentCli.newSessionStrategy(): AgentSessionStrategy = when (this) {
     AgentCli.CLAUDE -> ClaudeSessionStrategy()
-    AgentCli.CODEX -> CodexSessionStrategy(CodexSessionStore(CodexSessionStore.defaultHome()))
+    AgentCli.CODEX -> CodexSessionStrategy()
 }

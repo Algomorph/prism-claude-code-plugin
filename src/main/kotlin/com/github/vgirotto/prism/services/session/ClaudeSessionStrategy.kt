@@ -10,13 +10,15 @@ import com.intellij.openapi.diagnostic.Logger
  */
 class ClaudeSessionStrategy : AgentSessionStrategy {
 
-    override fun launchArguments(tab: TabSessionFiles, command: ResolvedCliCommand): List<String> {
+    override fun launchCommand(tab: TabSessionFiles, command: ResolvedCliCommand): ResolvedCliCommand {
         if (passesSettings(command.arguments)) {
             // Claude keeps only the last --settings, so adding ours would drop the user's.
             log.info("Claude command already passes --settings: the tab follows the title only")
-            return emptyList()
+            return command
         }
-        return listOf("--settings", ClaudeSessionHook.settingsJson(tab.claudeEvents))
+        return command.copy(
+            arguments = command.arguments + listOf("--settings", ClaudeSessionHook.settingsJson(tab.claudeEvents))
+        )
     }
 
     override fun launchEnvironment(): Map<String, String?> = mapOf(
