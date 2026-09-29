@@ -4,8 +4,13 @@ import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.AgentSession
 import com.github.vgirotto.prism.model.AgentSession.SessionState
 import com.github.vgirotto.prism.model.InteractionDiff
+import com.github.vgirotto.prism.services.session.AgentSessionStrategy
+import com.github.vgirotto.prism.services.session.SessionIdentity
+import com.github.vgirotto.prism.services.session.TabSessionFiles
+import com.github.vgirotto.prism.services.session.newSessionStrategy
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -110,27 +115,33 @@ class AgentProcessManager(private val project: Project) : Disposable {
      *
      * [resolvedCommand] is the absolute path and literal arguments the availability preflight
      * resolved. Every token is shell-quoted before it is typed into the PTY.
+     *
+     * [strategy] adds what the tab needs to follow the agent's session (see
+     * [AgentSessionStrategy]); the caller keeps it to read the terminal title with.
      */
     fun createSession(
         sessionName: String = "Chat",
         cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
         resolvedCommand: ResolvedCliCommand,
+        strategy: AgentSessionStrategy = cli.newSessionStrategy(),
     ): SessionResult {
         val session = AgentSession(name = sessionName, cli = cli)
         loadModelFromAgentSettings(session)
         session.state = SessionState.STARTING
+        val tabFiles = TabSessionFiles.under(PathManager.getTempPath(), session.id).create()
+        session.tabFiles = tabFiles
 
         val settings = AgentSettingsState.getInstance()
         val binaryPath = resolvedCommand.executable
-        // `clear` runs after the shell echoes the line and before the agent paints, which
-        // hides the prompt without racing the agent's first paint.
-        val launchCommand = "clear; " + shellCommand(resolvedCommand)
         val shell = settings.shellPath
 
         val env = HashMap(System.getenv())
         env["TERM"] = "xterm-256color"
         // Claude Code reads this to know it is embedded; it means nothing to other CLIs.
         if (cli == AgentCli.CLAUDE) env["CLAUDE_CODE_WRAPPER"] = "intellij"
+        for ((name, value) in strategy.launchEnvironment()) {
+            if (value == null) env.remove(name) else env[name] = value
+        }
 
         val workDir = project.basePath ?: System.getProperty("user.home")
 
@@ -186,19 +197,27 @@ class AgentProcessManager(private val project: Project) : Disposable {
                 Thread.sleep(500)
                 if (process.isAlive) {
                     // Deterministic session identity: for Claude, launch with `--session-id <id>`
-                    // so the conversation file is exactly <id>.jsonl, which is how the chat's
-                    // name is found. Gated on the runtime capability probe — if this Claude does
-                    // not support it (or the agent is Codex, which is resolved another way),
-                    // launch bare; the tab then keeps its number.
-                    val flag = if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
-                        " --session-id ${session.id}"
-                    } else ""
-                    val cmd = "$launchCommand$flag\n"
+                    // so the conversation starts as exactly <id>.jsonl. Gated on the runtime
+                    // capability probe. It is only the provisional identity: the session hook
+                    // reports the real one, and every switch after it.
+                    val sessionIdFlag =
+                        if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
+                            if (session.identity == null) session.identity = SessionIdentity(session.id, null)
+                            listOf("--session-id", session.id)
+                        } else emptyList()
+                    val tracking = strategy.launchArguments(tabFiles, resolvedCommand)
+                    val launch = resolvedCommand.copy(
+                        arguments = resolvedCommand.arguments + sessionIdFlag + tracking
+                    )
+                    // `clear` runs after the shell echoes the line and before the agent paints,
+                    // which hides the prompt without racing the agent's first paint.
+                    val cmd = "clear; " + shellCommand(launch) + "\n"
                     process.outputStream.write(cmd.toByteArray(StandardCharsets.UTF_8))
                     process.outputStream.flush()
                     log.info(
                         "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
-                            if (flag.isEmpty()) "" else " (--session-id)"
+                            (if (sessionIdFlag.isEmpty()) "" else " (--session-id)") +
+                            (if (tracking.isEmpty()) "" else " (session tracking)")
                     )
                 }
             } catch (e: Exception) {
@@ -213,11 +232,6 @@ class AgentProcessManager(private val project: Project) : Disposable {
 
     /** `--session-id` capability per resolved executable, so a changed CLI path is re-probed. */
     private val deterministicSupportByExecutable = ConcurrentHashMap<String, Boolean>()
-
-    /** Public accessor for the cached `--session-id` capability probe: without it a Claude
-     *  chat has no per-chat identity, so the tab cannot be named after its conversation. */
-    fun isDeterministicSessionSupported(command: ResolvedCliCommand): Boolean =
-        deterministicSessionsSupported(command)
 
     /**
      * Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19).

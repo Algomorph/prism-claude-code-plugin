@@ -52,7 +52,7 @@
     <change-notes><![CDATA[
     <h2>Unreleased — Named Chat Tabs</h2>
     <ul>
-        <li>New: <strong>named chat tabs</strong> — a tab takes its conversation's own title instead of <code>Chat #1</code> (Claude's recorded title, or the first message for Codex) and carries a mark for the agent running in it; the tooltip has the full title.</li>
+        <li>New: <strong>named chat tabs</strong> — a tab shows the name that its agent shows instead of <code>Chat #1</code>, and changes immediately after <code>/rename</code>, <code>/resume</code>, <code>/clear</code> and <code>/new</code>. The tab also shows a mark for its agent, and the tooltip shows the full name. Codex 0.159.0 or later is necessary for Codex names.</li>
     </ul>
     <h2>v1.4.0 — Split Sessions &amp; Terminal Settings</h2>
     <ul>

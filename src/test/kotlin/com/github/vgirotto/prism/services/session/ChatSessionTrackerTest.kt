@@ -1,0 +1,272 @@
+package com.github.vgirotto.prism.services.session
+
+import com.github.vgirotto.prism.model.AgentSession
+import com.github.vgirotto.prism.services.ResolvedCliCommand
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Test
+
+/** The tab-update rules, driven synchronously: title events in, labels, tooltips and identity out. */
+class ChatSessionTrackerTest {
+
+    /** Runs UI and background work at once; periodic tasks run only when the test ticks them. */
+    private class ManualScheduler : ChatSessionTracker.Scheduler {
+        val periodic = mutableListOf<Pair<Long, () -> Unit>>()
+        override fun onUi(task: () -> Unit) = task()
+        override fun inBackground(task: () -> Unit) = task()
+        override fun every(periodMs: Long, task: () -> Unit): () -> Unit {
+            val entry = periodMs to task
+            periodic += entry
+            return { periodic.remove(entry) }
+        }
+        fun tick() = periodic.toList().forEach { it.second() }
+    }
+
+    /** A strategy over the real parsers, with the stores replaced by maps the test fills in. */
+    private class FakeStrategy(private val parser: (String) -> TitleReading?) : AgentSessionStrategy {
+        val ids = mutableMapOf<String, SessionIdentity>()
+        val names = mutableMapOf<String, String>()
+        var events: IdentityEventSource? = null
+        var resolveCalls = 0
+
+        override fun launchArguments(tab: TabSessionFiles, command: ResolvedCliCommand) = emptyList<String>()
+        override fun launchEnvironment() = emptyMap<String, String?>()
+        override fun parseTitle(title: String) = parser(title)
+        override fun identityEvents(tab: TabSessionFiles) = events
+        override fun resolveIdentity(hint: IdHint): SessionIdentity? {
+            resolveCalls++
+            return ids.values.filter { hint.matches(it.sessionId) }.singleOrNull()
+        }
+        override fun fullName(identity: SessionIdentity) = names[identity.sessionId]
+    }
+
+    private val scheduler = ManualScheduler()
+    private val shown = mutableListOf<TabTitle>()
+    private val sessions = mutableListOf<AgentSession>()
+
+    @AfterEach
+    fun disposeSessions() = sessions.forEach { it.dispose() }
+
+    private fun tracker(strategy: AgentSessionStrategy) =
+        ChatSessionTracker(strategy, "Chat #3", { shown += it }, scheduler)
+
+    private fun session(): AgentSession =
+        AgentSession(cli = com.github.vgirotto.prism.model.AgentCli.CLAUDE).apply {
+            tabFiles = TabSessionFiles(java.nio.file.Path.of("/nonexistent"))
+            sessions += this
+        }
+
+    // ── Claude ──
+
+    @Test
+    fun `a Claude title names the tab and its placeholder puts the number back`() {
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse))
+        tracker.onApplicationTitleChanged("✳ Review the branch")
+        tracker.onApplicationTitleChanged("✳ Claude Code")
+        assertEquals(
+            listOf(TabTitle("Review the branch", "Review the branch"), TabTitle("Chat #3", null)),
+            shown,
+        )
+    }
+
+    @Test
+    fun `unrecognized titles and glyph changes leave the tab alone`() {
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse))
+        tracker.onApplicationTitleChanged("greg@Sage: ~/x")
+        tracker.onApplicationTitleChanged("◐ Review the branch")
+        tracker.onApplicationTitleChanged("◑ Review the branch")
+        tracker.onApplicationTitleChanged("✳ Review the branch")
+        tracker.onApplicationTitleChanged("greg@Sage: ~/x")
+        assertEquals(listOf(TabTitle("Review the branch", "Review the branch")), shown)
+    }
+
+    @Test
+    fun `the latest title wins, whatever named it`() {
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse))
+        tracker.onApplicationTitleChanged("✳ my-own-name")
+        tracker.onApplicationTitleChanged("✳ A generated title")
+        assertEquals("A generated title", shown.last().label)
+    }
+
+    @Test
+    fun `a long name is clipped on the label and whole in the tooltip`() {
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse))
+        tracker.onApplicationTitleChanged("✳ Add quick action buttons to the Codex chat window")
+        assertEquals(
+            TabTitle("Add quick action buttons to…", "Add quick action buttons to the Codex chat window"),
+            shown.single(),
+        )
+    }
+
+    @Test
+    fun `hook events move the identity, the title keeps the name`() {
+        val events = ArrayDeque<SessionIdentity>()
+        val strategy = FakeStrategy(ClaudeTitleParser::parse).apply {
+            this.events = IdentityEventSource { events.removeLastOrNull().also { events.clear() } }
+        }
+        val tracker = tracker(strategy)
+        val session = session().apply { identity = SessionIdentity("launch", null) }
+        tracker.attach(session)
+        assertEquals(SessionIdentity("launch", null), tracker.identity)
+
+        events += SessionIdentity("startup-id", "/p/startup-id.jsonl")
+        scheduler.tick()
+        assertEquals("startup-id", session.identity?.sessionId)
+
+        tracker.onApplicationTitleChanged("✳ Named chat")
+        // /clear: a new session under the same title. Only the hook shows it.
+        events += SessionIdentity("cleared", "/p/cleared.jsonl")
+        tracker.onApplicationTitleChanged("✳ Named chat")
+        assertEquals(SessionIdentity("cleared", "/p/cleared.jsonl"), session.identity)
+        assertEquals(listOf(TabTitle("Named chat", "Named chat")), shown)
+    }
+
+    // ── Codex ──
+
+    private val idA = "01a0edbb-4501-7591-82b7-36c4c0a1b2c3"
+    private val idB = "01a0edcc-0000-7000-8000-000000000001"
+    private fun codexTitle(id: String, name: String? = null) =
+        id.take(29) + "..." + (name?.let { " | $it" } ?: "")
+
+    private fun codexStrategy() = FakeStrategy(CodexTitleParser::parse).apply {
+        ids[idA] = SessionIdentity(idA, "/r/$idA.jsonl")
+        ids[idB] = SessionIdentity(idB, "/r/$idB.jsonl")
+    }
+
+    @Test
+    fun `a Codex id prefix resolves to the exact thread`() {
+        val tracker = tracker(codexStrategy())
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
+        assertEquals(SessionIdentity(idA, "/r/$idA.jsonl"), tracker.identity)
+        assertEquals(TabTitle("Reply ok", "Reply ok"), shown.last())
+    }
+
+    @Test
+    fun `a resume into another thread resets the identity and resolves it again`() {
+        val tracker = tracker(codexStrategy())
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "First"))
+        tracker.onApplicationTitleChanged(codexTitle(idB, "Second"))
+        assertEquals(idB, tracker.identity?.sessionId)
+    }
+
+    @Test
+    fun `an identity found before attach moves to the session and can be cleared there`() {
+        val tracker = tracker(codexStrategy())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "First"))
+        val session = session()
+        tracker.attach(session)
+        assertEquals(idA, session.identity?.sessionId)
+
+        tracker.onApplicationTitleChanged(codexTitle("01a0eeee-0000-7000-8000-000000000009", "Unknown"))
+        assertNull(session.identity)
+        assertNull(tracker.identity)
+    }
+
+    @Test
+    fun `new in Codex restores the placeholder`() {
+        val tracker = tracker(codexStrategy())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "First"))
+        tracker.onApplicationTitleChanged(codexTitle(idB))
+        assertEquals(TabTitle("Chat #3", null), shown.last())
+        assertEquals(idB, tracker.identity?.sessionId)
+    }
+
+    @Test
+    fun `spinner frames neither republish nor resolve again`() {
+        val strategy = codexStrategy()
+        val tracker = tracker(strategy)
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok ⠋"))
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok ⠙"))
+        assertEquals(1, shown.size)
+        assertEquals(1, strategy.resolveCalls)
+    }
+
+    @Test
+    fun `an unresolvable prefix stays unknown and is retried on the tick`() {
+        val strategy = FakeStrategy(CodexTitleParser::parse)
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA))
+        assertNull(tracker.identity)
+
+        strategy.ids[idA] = SessionIdentity(idA, null) // Codex wrote the thread's first record.
+        scheduler.tick()
+        assertEquals(idA, tracker.identity?.sessionId)
+    }
+
+    @Test
+    fun `an ambiguous prefix leaves the identity unknown but the name correct`() {
+        val strategy = FakeStrategy(CodexTitleParser::parse).apply {
+            ids[idA] = SessionIdentity(idA, null)
+            ids["${idA.take(29)}ffffff0"] = SessionIdentity("${idA.take(29)}ffffff0", null)
+        }
+        val tracker = tracker(strategy)
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
+        assertNull(tracker.identity)
+        assertEquals("Reply ok", shown.last().label)
+    }
+
+    @Test
+    fun `a cut-off name takes the full name from the store, for the tooltip only`() {
+        val strategy = codexStrategy()
+        val full = "Investigate the flaky integration tests in the payments service"
+        strategy.names[idA] = full
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        val visible = full.take(45) + "..."
+        tracker.onApplicationTitleChanged(codexTitle(idA, visible))
+        assertEquals(TabTitle("Investigate the flaky…", full), shown.last())
+    }
+
+    @Test
+    fun `a rename past the visible part reaches the tooltip without a new title`() {
+        val strategy = codexStrategy()
+        val head = "Investigate the flaky integration tests in th"
+        strategy.names[idA] = "${head}e payments service"
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "$head..."))
+        assertEquals("${head}e payments service", shown.last().name)
+
+        strategy.names[idA] = "${head}e billing service"
+        scheduler.tick()
+        assertEquals("${head}e billing service", shown.last().name)
+    }
+
+    @Test
+    fun `a stored name that does not extend the visible text is not taken`() {
+        val strategy = codexStrategy()
+        val visible = "B".repeat(45) + "..."
+        strategy.names[idA] = "An older name that does not match the title at all, at all"
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, visible))
+        scheduler.tick()
+        assertEquals(visible, shown.last().name)
+    }
+
+    @Test
+    fun `a name that is not cut off never reads the store`() {
+        val strategy = codexStrategy()
+        strategy.names[idA] = "Reply ok, and more that should never show"
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
+        scheduler.tick()
+        assertEquals(TabTitle("Reply ok", "Reply ok"), shown.last())
+    }
+
+    @Test
+    fun `nothing is shown and no work is scheduled after dispose`() {
+        val tracker = tracker(codexStrategy())
+        tracker.attach(session())
+        tracker.dispose()
+        assertEquals(0, scheduler.periodic.size)
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
+        assertEquals(emptyList<TabTitle>(), shown)
+    }
+}

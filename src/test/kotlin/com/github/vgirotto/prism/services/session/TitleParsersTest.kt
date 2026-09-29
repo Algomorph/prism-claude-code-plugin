@@ -1,0 +1,153 @@
+package com.github.vgirotto.prism.services.session
+
+import com.github.vgirotto.prism.services.session.TitleReading.Named
+import com.github.vgirotto.prism.services.session.TitleReading.Unnamed
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+
+/** Title strings as recorded from Claude Code 2.1.284 and codex-cli 0.159.0 in a pty. */
+class TitleParsersTest {
+
+    @Nested
+    inner class Claude {
+
+        private fun parse(title: String) = ClaudeTitleParser.parse(title)
+
+        @Test
+        fun `every status glyph is accepted`() {
+            for (glyph in listOf("✳", "◐", "◑")) {
+                assertEquals(Named("Fix the parser", false, null), parse("$glyph Fix the parser"))
+            }
+        }
+
+        @Test
+        fun `the untitled placeholder reads as unnamed`() {
+            assertEquals(Unnamed(null), parse("✳ Claude Code"))
+            assertEquals(Unnamed(null), parse("◐ Claude Code"))
+        }
+
+        @Test
+        fun `shell and unknown titles produce no reading`() {
+            assertNull(parse("greg@Sage: ~/Garage/prism"))
+            assertNull(parse("Claude Code"))
+            assertNull(parse("* Fix the parser"))
+            assertNull(parse("✳Fix the parser"))
+            assertNull(parse("✳ "))
+            assertNull(parse(""))
+        }
+
+        @Test
+        fun `a user title is kept as written, including a leading emoji or angle bracket`() {
+            assertEquals(Named("🚀 Launch prep", false, null), parse("✳ 🚀 Launch prep"))
+            assertEquals(Named("<draft> notes", false, null), parse("◑ <draft> notes"))
+            assertEquals(Named("a | b", false, null), parse("✳ a | b"))
+        }
+
+        @Test
+        fun `a long title is never marked as cut off`() {
+            val long = "x".repeat(89)
+            assertEquals(Named(long, false, null), parse("✳ $long"))
+        }
+    }
+
+    @Nested
+    inner class Codex {
+
+        private val idItem = "01a0edbb-4501-7591-82b7-36c4c..."
+        private val hint = IdHint("01a0edbb-4501-7591-82b7-36c4c", isPrefix = true)
+
+        private fun parse(title: String) = CodexTitleParser.parse(title)
+
+        @Test
+        fun `an id alone reads as unnamed with a prefix hint`() {
+            assertEquals(Unnamed(hint), parse(idItem))
+        }
+
+        @Test
+        fun `a named thread carries its name and id prefix`() {
+            assertEquals(Named("Reply ok", false, hint), parse("$idItem | Reply ok"))
+            assertEquals(Named("short-name", false, hint), parse("$idItem | short-name"))
+        }
+
+        @Test
+        fun `spinner frames on both items are removed`() {
+            assertEquals(Named("Reply ok", false, hint), parse("$idItem ⠋ | Reply ok ⠙"))
+            assertEquals(Unnamed(hint), parse("$idItem ⠸"))
+        }
+
+        @Test
+        fun `a name still being generated produces no reading`() {
+            assertNull(parse("$idItem |"))
+            assertNull(parse("$idItem ⠋ | ⠋"))
+        }
+
+        @Test
+        fun `a name containing the separator is kept whole`() {
+            assertEquals(Named("left | right", false, hint), parse("$idItem | left | right"))
+        }
+
+        @Test
+        fun `a name Codex cut off is marked, a user name ending in dots is not`() {
+            val cut = "A".repeat(45) + "..."
+            assertEquals(Named(cut, true, hint), parse("$idItem | $cut"))
+            assertEquals(Named(cut, true, hint), parse("$idItem ⠋ | $cut ⠼"))
+
+            // Recorded after `/rename Investigate the flaky integration tests in the payments service today`.
+            assertEquals(
+                Named("Investigate the flaky integration tests in th...", true, IdHint("01a0edf7-13df-7bf3-a5ab-fc27d", true)),
+                parse("01a0edf7-13df-7bf3-a5ab-fc27d... | Investigate the flaky integration tests in th..."),
+            )
+
+            val own = "Wait for it..."
+            assertEquals(Named(own, false, hint), parse("$idItem | $own"))
+        }
+
+        @Test
+        fun `graphemes, not chars, decide whether a name was cut off`() {
+            // 45 emoji (two UTF-16 units each) plus the ellipsis: 48 graphemes, 93 chars.
+            val cut = "😀".repeat(45) + "..."
+            assertTrue(CodexTitleParser.isCutOff(cut))
+            assertFalse(CodexTitleParser.isCutOff("😀".repeat(20) + "..."))
+        }
+
+        @Test
+        fun `a full id is not a prefix`() {
+            val id = "01a0edbb-4501-7591-82b7-36c4c0a1b2c3"
+            assertEquals(Unnamed(IdHint(id, isPrefix = false)), parse(id))
+        }
+
+        @Test
+        fun `shell, action-required and other titles produce no reading`() {
+            assertNull(parse("greg@Sage: ~/Garage/prism"))
+            assertNull(parse("[ ! ] Action Required | $idItem | Reply ok"))
+            assertNull(parse("[ . ] Action Required | $idItem | Reply ok"))
+            assertNull(parse("codex | prism"))
+            assertNull(parse("deadbeef | Reply ok"))
+            assertNull(parse(""))
+        }
+
+        @Test
+        fun `a user name ending in a braille character keeps it unless it follows a space`() {
+            assertEquals(Named("dots⠋", false, hint), parse("$idItem | dots⠋"))
+        }
+
+        @Test
+        fun `normalize matches the Codex title sanitizer`() {
+            assertEquals("Project | Working | Thread", CodexTitleParser.normalize("  Project\t|\nWorking\u001b\u0007\u009D\u009C |  Thread  "))
+            assertEquals("Project Title", CodexTitleParser.normalize("Pro‮j⁦e‏c؜t​ ﻿T⁠itle"))
+        }
+    }
+
+    @Test
+    fun `id hints match whole ids exactly and prefixes by prefix`() {
+        val id = "01a0edbb-4501-7591-82b7-36c4c0a1b2c3"
+        assertTrue(IdHint("01a0edbb-4501", isPrefix = true).matches(id))
+        assertFalse(IdHint("01a0edbb-4502", isPrefix = true).matches(id))
+        assertTrue(IdHint(id, isPrefix = false).matches(id))
+        assertFalse(IdHint("01a0edbb-4501", isPrefix = false).matches(id))
+    }
+}
