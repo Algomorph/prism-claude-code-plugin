@@ -1,10 +1,16 @@
 package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.icons.PrismIcons
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.AgentSettingsState
+import com.github.vgirotto.prism.services.ChatName
+import com.github.vgirotto.prism.services.ChatNameSource
+import com.github.vgirotto.prism.services.ChatNameWatcher
+import com.github.vgirotto.prism.services.ClaudeChatNameSource
 import com.github.vgirotto.prism.services.ClaudeValidationService
+import com.github.vgirotto.prism.services.CodexChatNameSource
 import com.github.vgirotto.prism.services.CodexValidationService
 import com.github.vgirotto.prism.services.FileSnapshotService
 import com.github.vgirotto.prism.services.ResolvedCliCommand
@@ -67,8 +73,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     companion object {
         val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
 
-        private val chatNamePattern = Regex("""^Chat #(\d+)$""")
-
         private const val TERMINAL_CONFIGURABLE_ID = "terminal"
 
         /** IntelliJ IDEA 2025.1.1, the first build with dedicated terminal font settings. */
@@ -79,19 +83,29 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         internal fun supportsDedicatedTerminalFontSettings(build: BuildNumber): Boolean =
             build >= TERMINAL_FONT_SETTINGS_SINCE_BUILD
 
+        /** Marks the single Conversation History tab. Chat tabs take their titles from the agent
+         *  now, so one could legitimately be *called* "History" — identifying it by display name
+         *  would then reveal a chat instead of opening history. */
+        val HISTORY_TAB_KEY = Key.create<Boolean>("PrismHistoryTab")
+
+        /** The N of a chat tab's `Chat #N` placeholder. It stays with the tab while the tab
+         *  shows the agent's name for the chat instead. */
+        val CHAT_NUMBER_KEY = Key.create<Int>("PrismChatNumber")
+
         /**
-         * Names the next tab from the highest "Chat #N" currently open in this tool window,
+         * Numbers the next tab from the highest chat number currently open in this tool window,
          * rather than a static counter. `canCloseContents="true"` (plugin.xml) makes the platform
          * re-invoke [createToolWindowContent] — and previously reset a shared counter — whenever
          * this tool window's content is reinitialized, which produced duplicate tab names when
-         * older tabs were still around. Scoping to the currently open tabs makes the name
-         * collision-proof regardless of how many times that happens.
+         * older tabs were still around. Scoping to the currently open tabs makes the number
+         * collision-proof regardless of how many times that happens. The number is read from
+         * [CHAT_NUMBER_KEY], not parsed from the tab's name, since a named chat no longer shows it.
          */
-        fun nextSessionName(toolWindow: ToolWindow): String {
+        fun nextChatNumber(toolWindow: ToolWindow): Int {
             val highest = toolWindow.contentManager.contentsRecursively
-                .mapNotNull { chatNamePattern.matchEntire(it.displayName.orEmpty())?.groupValues?.get(1)?.toIntOrNull() }
+                .mapNotNull { it.getUserData(CHAT_NUMBER_KEY) }
                 .maxOrNull() ?: 0
-            return "Chat #${highest + 1}"
+            return highest + 1
         }
     }
 
@@ -366,11 +380,22 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 add(terminalWidget.component, BorderLayout.CENTER)
             }
 
-            val sessionName = nextSessionName(toolWindow)
+            // `Chat #N` is the placeholder, not the name: neither CLI has recorded a title yet
+            // (Claude generates one after the first turn, Codex has nothing to derive one from
+            // until the user types), so the tab opens numbered and is renamed by the
+            // ChatNameWatcher installed once the session starts.
+            val chatNumber = nextChatNumber(toolWindow)
+            val sessionName = "Chat #$chatNumber"
             val content = targetManager.factory.createContent(
                 terminalWithToolbar, sessionName, false
             )
             content.isCloseable = true
+            content.putUserData(CHAT_NUMBER_KEY, chatNumber)
+            // Which agent is behind this tab, at a glance. Tool-window tabs hide content icons
+            // unless asked to show them.
+            content.icon = PrismIcons.forCli(cli)
+            content.putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
+            content.description = cli.displayName()
 
             // The session lives and dies with the tab, and only tab *disposal* means the
             // tab is gone. Reordering tabs by dragging one removes its Content with
@@ -407,6 +432,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     binding.activate()
 
+                    // Resolve --session-id support off the EDT (the capability probe can block for
+                    // seconds). Only meaningful for Claude — Codex resolves its rollout another
+                    // way, so don't spawn the claude probe for a Codex session.
+                    val deterministicSupported = cli == AgentCli.CLAUDE &&
+                        try { pm.isDeterministicSessionSupported(resolvedCommand) } catch (_: Exception) { false }
+
                     ApplicationManager.getApplication().invokeLater {
                         if (!binding.isAttached(result.sessionId) || content.manager == null) {
                             return@invokeLater
@@ -416,6 +447,13 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                             terminalWidget.start()
                             terminalWidget.component.requestFocusInWindow()
                             log.info("Agent session started: $sessionName [${result.sessionId}]")
+
+                            // Rename the tab from `Chat #N` to whatever the CLI calls this chat,
+                            // as soon as it has recorded a name (see [ChatNameWatcher]).
+                            installChatNameWatcher(
+                                project, disposable, content, cli,
+                                launchSessionId = if (deterministicSupported) result.sessionId else null,
+                            )
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
                             notifyError(project, PrismBundle.message("toolwindow.error.terminal", e.message ?: ""))
@@ -432,9 +470,53 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
     }
 
+    /**
+     * Watch for the name the CLI gives this chat and rename the tab when it appears, replacing
+     * the `Chat #N` placeholder (see [ChatNameWatcher] for the resolution rules).
+     *
+     * [launchSessionId] is the `--session-id` a Claude chat was launched with — the marker that
+     * says which conversation file is ours. Null means Prism has no per-chat identity to attribute
+     * a title to (a Claude build without `--session-id`), so the tab keeps its number rather than
+     * risk showing another chat's title. Codex needs no id: its rollout is resolved from the
+     * project by cwd + recency.
+     */
+    private fun installChatNameWatcher(
+        project: Project,
+        parentDisposable: com.intellij.openapi.Disposable,
+        content: Content,
+        cli: AgentCli,
+        launchSessionId: String?,
+    ) {
+        val source: ChatNameSource = when (cli) {
+            AgentCli.CLAUDE -> {
+                val id = launchSessionId ?: return
+                val resolver = com.github.vgirotto.prism.chatshell.SessionResolver(project.basePath)
+                ClaudeChatNameSource({ resolver.projectDir()?.takeIf { it.isDirectory } }, id)
+            }
+            AgentCli.CODEX -> {
+                val resolver =
+                    com.github.vgirotto.prism.chatshell.CodexSessionResolver(project.basePath)
+                CodexChatNameSource { resolver.newestForProject() }
+            }
+        }
+        val watcher = ChatNameWatcher(source)
+        Disposer.register(parentDisposable, watcher)
+        watcher.start { name -> applyChatName(content, cli, name) }
+    }
+
+    /**
+     * Put [name] on the chat tab: the clipped form as the label, the full text plus the agent it
+     * belongs to as the tooltip (a truncated title is only useful if the whole one is reachable).
+     */
+    private fun applyChatName(content: Content, cli: AgentCli, name: ChatName) {
+        val label = name.display()
+        content.displayName = label
+        content.description = PrismBundle.message("toolwindow.tab.tooltip", cli.displayName(), name.text)
+    }
+
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {
         for (content in toolWindow.contentManager.contentsRecursively) {
-            if (content.displayName == PrismBundle.message("toolwindow.tab.history")) {
+            if (content.getUserData(HISTORY_TAB_KEY) == true) {
                 content.manager?.setSelectedContent(content)
                 // History is scoped to the active session's CLI, which may have changed
                 // to another agent since this tab was built.
@@ -449,6 +531,9 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             historyPanel, PrismBundle.message("toolwindow.tab.history"), false
         )
         content.isCloseable = true
+        content.putUserData(HISTORY_TAB_KEY, true)
+        content.icon = AllIcons.Vcs.History
+        content.putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
         manager.addContent(content)
         manager.setSelectedContent(content)
         historyPanel.loadHistory()
@@ -532,7 +617,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
             val defaultCli = AgentSettingsState.getInstance().defaultCli
             for (cli in listOf(defaultCli) + (AgentCli.values().toList() - defaultCli)) {
-                add(object : DumbAwareAction(cli.displayName()) {
+                add(object : DumbAwareAction(cli.displayName(), null, PrismIcons.forCli(cli)) {
                     override fun actionPerformed(e: AnActionEvent) {
                         val manager = resolveActionManager(project, toolWindow, e)
                         createSessionTab(

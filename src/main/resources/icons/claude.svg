@@ -1,0 +1,9 @@
+<!-- Claude Code session marker. A generic six-ray burst in the Prism palette; not the
+     Anthropic wordmark or logo (see the trademark note in plugin.xml). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 40 40">
+  <g stroke="#D97757" stroke-width="3.4" stroke-linecap="round">
+    <line x1="20" y1="6" x2="20" y2="34"/>
+    <line x1="8" y1="13" x2="32" y2="27"/>
+    <line x1="8" y1="27" x2="32" y2="13"/>
+  </g>
+</svg>
