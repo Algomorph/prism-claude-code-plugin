@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Terminal font and terminal settings**: the Prism terminal now uses the IDE terminal's own settings provider, so the font family, font size, and line spacing from Settings > Tools > Terminal > Font Settings apply — along with Ctrl+wheel zoom, live updates when those settings change, and the mouse-reporting, bell, and shortcut-override preferences set on that page. Prism previously used the editor's console font at an unscaled size, which ignored a terminal font you had set and rendered tiny on HiDPI displays.
 - **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry, which opens the IDE's terminal settings page. The page is matched on its configurable ID, which is stable across releases and independent of the IDE's display language. The gear icon in the toolbar continues to open the settings of Prism.
+- **Session names on chat tabs**: each chat tab shows the name of its conversation instead of `Chat #1`. Prism reads the name from the session file on disk, and it updates the tab while the chat runs.
+  - For a Claude session, Prism uses the title that Claude records. A title that you set wins over a title that Claude generates. Prism starts each Claude session with the `--session-id` option, so that it can identify the session file of each chat. If the configured Claude arguments already select a conversation (`--continue`, `--resume`, or `--session-id`), Prism does not add the option.
+  - Codex records no title, so for a Codex session Prism uses the first user message. This is the same label that the Codex `/resume` picker shows.
+  - If no name is available, the tab keeps its number. Prism clips a long name at a word boundary. The tooltip shows the full name and the name of the agent.
+  - Each agent supplies names through its own source. Each source does one bounded tail read of a candidate session file. The read identifies the conversation and supplies the title. A rank keeps a better name from losing to a worse name.
+  - Prism now finds the Conversation History tab by a key instead of by its display name, because a chat can now use the name `History`.
+- **Agent marks on tabs**: each chat tab and the New Session picker show a mark for the agent. The marks are simple shapes in the Prism colors. They are not vendor logos.
 
 ## [1.3.1] — 2026-08-26
 
