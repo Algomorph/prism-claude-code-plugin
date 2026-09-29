@@ -125,11 +125,17 @@ class ChatSessionTracker(
         }
     }
 
-    /** Retries an unresolved identity and refreshes a cut-off name. */
+    /**
+     * Retries an identity the title's id hint has not fully resolved, and refreshes a cut-off
+     * name. Unresolved includes a known id without a transcript path: a Codex thread renamed
+     * before its first turn has no rollout file until that turn starts.
+     */
     fun slowTick() {
         val unresolved = synchronized(lock) {
             val hint = reading?.idHint
-            if (!disposed && hint != null && currentIdentity() == null) hint to generation else null
+            val known = currentIdentity()
+            val incomplete = known == null || known.transcriptPath == null
+            if (!disposed && hint != null && incomplete) hint to generation else null
         }
         if (unresolved != null) resolve(unresolved.first, unresolved.second) else refreshFullName()
     }
