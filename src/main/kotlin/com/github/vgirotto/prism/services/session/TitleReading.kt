@@ -13,12 +13,14 @@ sealed interface TitleReading {
     data class Unnamed(override val idHint: IdHint?) : TitleReading
 
     /**
-     * A recognized agent title with a chat name. [truncated]: the CLI cut the name off to fit its
-     * title, so [name] ends in the CLI's own ellipsis and the full name has to come from its store.
+     * A recognized agent title with a chat name. [mayBeCutOff]: [name] ends the way the CLI ends a
+     * name it cut off to fit its title. The title alone cannot tell that from a name the user
+     * ended with the same characters, so [AgentSessionStrategy.fullName] decides, from the CLI's
+     * store.
      */
     data class Named(
         val name: String,
-        val truncated: Boolean,
+        val mayBeCutOff: Boolean,
         override val idHint: IdHint?,
     ) : TitleReading
 }

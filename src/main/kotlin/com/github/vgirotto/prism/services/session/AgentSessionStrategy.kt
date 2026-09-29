@@ -34,8 +34,12 @@ interface AgentSessionStrategy {
     /** Complete a title's id hint to an exact identity, or null if it is not uniquely resolvable. */
     fun resolveIdentity(hint: IdHint): SessionIdentity?
 
-    /** The full name of a session whose title was cut off, from the CLI's own store, or null. */
-    fun fullName(identity: SessionIdentity): String?
+    /**
+     * The full name of [identity], from the CLI's own store, for a title that shows [shown] and may
+     * have cut it off. Null unless the stored name is one the CLI would show as [shown]: the store
+     * can lag the title, and [shown] may be the user's own name rather than a cut-off one.
+     */
+    fun fullName(identity: SessionIdentity, shown: String): String?
 }
 
 /** A stream of session switches, polled; [poll] returns the newest one since the last call. */
