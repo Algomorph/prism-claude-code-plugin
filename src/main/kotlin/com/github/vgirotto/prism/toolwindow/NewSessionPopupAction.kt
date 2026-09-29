@@ -1,6 +1,7 @@
 package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.i18n.PrismBundle
+import com.github.vgirotto.prism.icons.PrismIcons
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentSettingsState
 import com.github.vgirotto.prism.services.ClaudeValidationService
@@ -78,11 +79,13 @@ class NewSessionPopupAction(
         val previousFocusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
         val popup = JBPopupFactory.getInstance().createPopupChooserBuilder(ordered)
             .setTitle("New Agent Session")
-            // The (nullValue, Function) overload is scheduled for removal; the customizer
-            // form has to blank the label itself for a null value.
+            // Marked with the same icons the chat tabs carry, so the picker and its result
+            // look alike. The (nullValue, Function) overload is scheduled for removal; the
+            // customizer form has to blank the label itself for a null value.
             .setRenderer(
                 SimpleListCellRenderer.create<AgentCli> { label, value, _ ->
                     label.text = value?.displayName().orEmpty()
+                    label.icon = value?.let { PrismIcons.forCli(it) }
                 }
             )
             .setRequestFocus(true)
@@ -117,7 +120,8 @@ class NewSessionPopupAction(
     }
 }
 
-private fun AgentCli.displayName(): String = when (this) {
+/** The CLI's own product name, as users know it. Shared with the chat tab tooltips. */
+internal fun AgentCli.displayName(): String = when (this) {
     AgentCli.CLAUDE -> "Claude Code"
     AgentCli.CODEX -> "Codex"
 }
