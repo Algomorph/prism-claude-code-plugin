@@ -21,6 +21,13 @@ class CodexSessionStrategy(
     },
 ) : AgentSessionStrategy {
 
+    /**
+     * True once this tab launched with Prism's title items. Without them the title has some other
+     * layout (the user's own items, or an older Codex's default) that can look the same: with
+     * `["thread-id","model"]`, the model would read as the chat name. The tab then keeps its number.
+     */
+    @Volatile private var titleItemsSet = false
+
     override fun launchArguments(tab: TabSessionFiles, command: ResolvedCliCommand): List<String> {
         if (setsTerminalTitle(command.arguments)) {
             log.info("Codex command already sets tui.terminal_title: the tab keeps its number")
@@ -30,12 +37,14 @@ class CodexSessionStrategy(
             log.info("Codex older than $MIN_VERSION: the tab keeps its number")
             return emptyList()
         }
+        titleItemsSet = true
         return listOf("-c", TITLE_OVERRIDE)
     }
 
     override fun launchEnvironment(): Map<String, String?> = emptyMap()
 
-    override fun parseTitle(title: String): TitleReading? = CodexTitleParser.parse(title)
+    override fun parseTitle(title: String): TitleReading? =
+        if (titleItemsSet) CodexTitleParser.parse(title) else null
 
     override fun identityEvents(tab: TabSessionFiles): IdentityEventSource? = null
 

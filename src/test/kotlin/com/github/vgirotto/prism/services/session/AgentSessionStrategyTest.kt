@@ -89,6 +89,19 @@ class AgentSessionStrategyTest {
     }
 
     @Test
+    fun `Codex titles are read only after a launch with Prism's title items`() {
+        val title = "01a0edbb-4501-7591-82b7-36c4c... | gpt-5.5"
+        val skipped = CodexSessionStrategy(CodexSessionStore(dir), versionOf = { "0.159.0" })
+        skipped.launchArguments(tab, codex("-c", "tui.terminal_title=[\"thread-id\",\"model\"]"))
+        assertNull(skipped.parseTitle(title))
+
+        val tracked = CodexSessionStrategy(CodexSessionStore(dir), versionOf = { "0.159.0" })
+        assertNull(tracked.parseTitle(title)) // Not launched yet.
+        tracked.launchArguments(tab, codex())
+        assertEquals("gpt-5.5", (tracked.parseTitle(title) as TitleReading.Named).name)
+    }
+
+    @Test
     fun `Codex's full name is taken only when Codex would show it as the title does`() {
         val long = "Investigate  the flaky\tintegration tests in the payments service"
         dir.resolve(CodexSessionStore.INDEX_FILE).toFile()
