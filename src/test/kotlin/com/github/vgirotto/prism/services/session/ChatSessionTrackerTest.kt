@@ -231,6 +231,23 @@ class ChatSessionTrackerTest {
     }
 
     @Test
+    fun `a transcript path that did not exist yet is found once it does`() {
+        val strategy = FakeStrategy(CodexTitleParser::parse).apply { ids[idA] = SessionIdentity(idA, null) }
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Renamed before the first turn"))
+        assertEquals(SessionIdentity(idA, null), tracker.identity)
+
+        strategy.ids[idA] = SessionIdentity(idA, "/r/$idA.jsonl") // The first turn wrote the rollout.
+        scheduler.tick()
+        assertEquals(SessionIdentity(idA, "/r/$idA.jsonl"), tracker.identity)
+
+        val calls = strategy.resolveCalls
+        scheduler.tick()
+        assertEquals(calls, strategy.resolveCalls) // Complete: no more lookups.
+    }
+
+    @Test
     fun `an ambiguous prefix leaves the identity unknown but the name correct`() {
         val strategy = FakeStrategy(CodexTitleParser::parse).apply {
             ids[idA] = SessionIdentity(idA, null)
