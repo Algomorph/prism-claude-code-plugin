@@ -41,9 +41,8 @@ class CodexSessionStrategy(
 
     override fun resolveIdentity(hint: IdHint): SessionIdentity? = store.complete(hint)
 
-    /** Normalized as Codex's title would print it, so it can be compared with the cut-off text. */
-    override fun fullName(identity: SessionIdentity): String? =
-        store.threadName(identity.sessionId)?.let(CodexTitleParser::normalize)?.takeIf { it.isNotEmpty() }
+    override fun fullName(identity: SessionIdentity, shown: String): String? =
+        fullNameBehind(store.threadName(identity.sessionId), shown)
 
     private fun supportsTitleItems(executable: String): Boolean =
         supportByExecutable.getOrPut(executable) {
@@ -75,6 +74,15 @@ class CodexSessionStrategy(
                     else -> false
                 }
             }
+        }
+
+        /**
+         * [stored], sanitized as Codex's title prints text, if Codex would show it as [shown]; else
+         * null (an older name the index still holds, or no name).
+         */
+        internal fun fullNameBehind(stored: String?, shown: String): String? {
+            if (stored == null || CodexTitleParser.titleText(stored) != shown) return null
+            return CodexTitleParser.normalize(stored).takeIf { it.isNotEmpty() }
         }
 
         internal fun clearCacheForTests() = supportByExecutable.clear()

@@ -91,7 +91,7 @@ class TitleParsersTest {
         }
 
         @Test
-        fun `a name Codex cut off is marked, a user name ending in dots is not`() {
+        fun `any name ending in the ellipsis may be cut off, others are not`() {
             val cut = "A".repeat(45) + "..."
             assertEquals(Named(cut, true, hint), parse("$idItem | $cut"))
             assertEquals(Named(cut, true, hint), parse("$idItem ⠋ | $cut ⠼"))
@@ -102,16 +102,23 @@ class TitleParsersTest {
                 parse("01a0edf7-13df-7bf3-a5ab-fc27d... | Investigate the flaky integration tests in th..."),
             )
 
-            val own = "Wait for it..."
-            assertEquals(Named(own, false, hint), parse("$idItem | $own"))
+            // Shorter than a cut, as when Codex's sanitizer collapsed whitespace in the kept part.
+            assertEquals(Named("Wait for it...", true, hint), parse("$idItem | Wait for it..."))
+            assertEquals(Named("Wait for it", false, hint), parse("$idItem | Wait for it"))
         }
 
         @Test
-        fun `graphemes, not chars, decide whether a name was cut off`() {
+        fun `titleText cuts by graphemes first and sanitizes after`() {
+            val recorded = "Investigate the flaky integration tests in the payments service today"
+            assertEquals("Investigate the flaky integration tests in th...", CodexTitleParser.titleText(recorded))
+            assertEquals(
+                "Investigate flaky integration tests in t...",
+                CodexTitleParser.titleText("Investigate  flaky  integration  tests  in  the  payments  service"),
+            )
             // 45 emoji (two UTF-16 units each) plus the ellipsis: 48 graphemes, 93 chars.
-            val cut = "😀".repeat(45) + "..."
-            assertTrue(CodexTitleParser.isCutOff(cut))
-            assertFalse(CodexTitleParser.isCutOff("😀".repeat(20) + "..."))
+            assertEquals("😀".repeat(45) + "...", CodexTitleParser.titleText("😀".repeat(60)))
+            assertEquals("😀".repeat(48), CodexTitleParser.titleText("😀".repeat(48)))
+            assertEquals("Wait for it...", CodexTitleParser.titleText("  Wait for it...  "))
         }
 
         @Test

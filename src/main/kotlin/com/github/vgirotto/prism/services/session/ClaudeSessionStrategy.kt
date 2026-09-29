@@ -39,7 +39,7 @@ class ClaudeSessionStrategy : AgentSessionStrategy {
     override fun resolveIdentity(hint: IdHint): SessionIdentity? = null
 
     /** Claude never cuts its title off. */
-    override fun fullName(identity: SessionIdentity): String? = null
+    override fun fullName(identity: SessionIdentity, shown: String): String? = null
 
     companion object {
         private val log = Logger.getInstance(ClaudeSessionStrategy::class.java)

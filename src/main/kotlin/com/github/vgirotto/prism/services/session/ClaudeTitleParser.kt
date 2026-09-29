@@ -29,6 +29,6 @@ object ClaudeTitleParser {
         val rest = title.substring(glyphEnd + 1).trim()
         if (rest.isEmpty()) return null
         if (rest == UNTITLED) return TitleReading.Unnamed(idHint = null)
-        return TitleReading.Named(rest, truncated = false, idHint = null)
+        return TitleReading.Named(rest, mayBeCutOff = false, idHint = null)
     }
 }

@@ -22,10 +22,10 @@ data class TabTitle(val label: String, val name: String?)
  *    carries (Codex): a title whose id disagrees with the known identity clears it, and it is
  *    resolved again off the terminal thread. It is stored on the attached [AgentSession], for
  *    other features to read.
- *  - **Full name.** While the title shows a name the CLI cut off, the full name is read from the
- *    CLI's store every [slowTickMs], independently of title events: Codex writes no new title
- *    when only the hidden end of a long name changes. A stored name is taken only when it extends
- *    the visible text; it changes the tooltip, never the label.
+ *  - **Full name.** While the title shows a name the CLI may have cut off, the full name is read
+ *    from the CLI's store every [slowTickMs], independently of title events: Codex writes no new
+ *    title when only the hidden end of a long name changes. The strategy takes a stored name only
+ *    when the CLI would show it as the visible text; it changes the tooltip, never the label.
  *
  * Title events arrive on the terminal emulator thread; [show] runs on the UI thread, in order.
  */
@@ -154,13 +154,11 @@ class ChatSessionTracker(
     private fun refreshFullName() {
         val (visible, known) = synchronized(lock) {
             val current = reading as? TitleReading.Named
-            if (disposed || current == null || !current.truncated) return
+            if (disposed || current == null || !current.mayBeCutOff) return
             current to (currentIdentity() ?: return)
         }
-        val stored = try { strategy.fullName(known) } catch (_: Exception) { null } ?: return
-        val shownPart = visible.name.removeSuffix("...").removeSuffix("…")
-        // The index can lag the title briefly; until it agrees, keep what the title shows.
-        if (stored.length <= shownPart.length || !stored.startsWith(shownPart)) return
+        // Null until the store holds a name that matches the title: keep what the title shows.
+        val stored = try { strategy.fullName(known, visible.name) } catch (_: Exception) { null } ?: return
         synchronized(lock) {
             if (disposed || reading != visible || currentIdentity() != known) return
             if (fullName == stored) return

@@ -89,11 +89,20 @@ class AgentSessionStrategyTest {
     }
 
     @Test
-    fun `Codex's full name is normalized as its title prints it`() {
+    fun `Codex's full name is taken only when Codex would show it as the title does`() {
+        val long = "Investigate  the flaky\tintegration tests in the payments service"
         dir.resolve(CodexSessionStore.INDEX_FILE).toFile()
-            .writeText("""{"id":"t1","thread_name":"  a  long\tname  "}""" + "\n")
+            .writeText("""{"id":"t1","thread_name":"${long.replace("\t", "\\t")}"}""" + "\n")
         val strategy = CodexSessionStrategy(CodexSessionStore(dir), versionOf = { null })
-        assertEquals("a long name", strategy.fullName(SessionIdentity("t1", null)))
+        val identity = SessionIdentity("t1", null)
+
+        assertEquals(
+            "Investigate the flaky integration tests in the payments service",
+            strategy.fullName(identity, "Investigate the flaky integration tests in t..."),
+        )
+        // The index still holds the previous name, or the title shows a different one.
+        assertNull(strategy.fullName(identity, "Investigate the flaky integration tests in th..."))
+        assertNull(strategy.fullName(SessionIdentity("t2", null), "Anything..."))
     }
 
     @Test

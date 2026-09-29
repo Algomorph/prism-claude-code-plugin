@@ -50,15 +50,23 @@ object CodexTitleParser {
         val name = withoutSpinner(title.substring(separator + SEPARATOR.length))
         // `<id> |` alone, or `<id> ⠋ | ⠋`: the name is on its way, not absent.
         if (name.isEmpty()) return null
-        return TitleReading.Named(name, truncated = isCutOff(name), idHint = idHint)
+        return TitleReading.Named(name, mayBeCutOff = name.endsWith(ELLIPSIS), idHint = idHint)
     }
 
     /**
-     * True when [name] is how Codex shows a name it cut off: exactly [NAME_MAX_GRAPHEMES] grapheme
-     * clusters ending in `...`. A shorter name that happens to end in `...` is the user's own.
+     * Thread name [name] as the title shows it. Codex trims the name, cuts it to
+     * [NAME_MAX_GRAPHEMES] grapheme clusters (the last three becoming `...`), and only then
+     * sanitizes the whole title ([normalize]). So a cut-off name can show fewer than
+     * [NAME_MAX_GRAPHEMES] graphemes, when the sanitizer collapsed whitespace or removed invisible
+     * characters from the part that was kept.
      */
-    fun isCutOff(name: String): Boolean =
-        name.endsWith(ELLIPSIS) && graphemeCount(name) == NAME_MAX_GRAPHEMES
+    fun titleText(name: String): String {
+        val trimmed = name.trim()
+        val graphemes = graphemes(trimmed)
+        val kept = if (graphemes.size <= NAME_MAX_GRAPHEMES) trimmed
+            else graphemes.take(NAME_MAX_GRAPHEMES - ELLIPSIS.length).joinToString("") + ELLIPSIS
+        return normalize(kept)
+    }
 
     /**
      * [text] as Codex's title sanitizer would print it: control and invisible formatting
@@ -96,12 +104,18 @@ object CodexTitleParser {
         return trimmed
     }
 
-    private fun graphemeCount(text: String): Int {
+    private fun graphemes(text: String): List<String> {
         val it = BreakIterator.getCharacterInstance()
         it.setText(text)
-        var count = 0
-        while (it.next() != BreakIterator.DONE) count++
-        return count
+        val out = ArrayList<String>()
+        var start = it.first()
+        var end = it.next()
+        while (end != BreakIterator.DONE) {
+            out += text.substring(start, end)
+            start = end
+            end = it.next()
+        }
+        return out
     }
 
     /** `is_disallowed_terminal_title_char` in codex-rs/tui/src/terminal_title.rs. */

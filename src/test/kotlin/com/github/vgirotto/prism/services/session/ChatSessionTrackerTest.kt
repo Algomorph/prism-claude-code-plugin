@@ -38,7 +38,8 @@ class ChatSessionTrackerTest {
             resolveCalls++
             return ids.values.filter { hint.matches(it.sessionId) }.singleOrNull()
         }
-        override fun fullName(identity: SessionIdentity) = names[identity.sessionId]
+        override fun fullName(identity: SessionIdentity, shown: String) =
+            CodexSessionStrategy.fullNameBehind(names[identity.sessionId], shown)
     }
 
     private val scheduler = ManualScheduler()
@@ -284,6 +285,30 @@ class ChatSessionTrackerTest {
         strategy.names[idA] = "${head}e billing service"
         scheduler.tick()
         assertEquals("${head}e billing service", shown.last().name)
+    }
+
+    @Test
+    fun `a cut-off name with collapsed whitespace still takes the full name`() {
+        val strategy = codexStrategy()
+        val stored = "Investigate  flaky  integration  tests  in  the  payments  service"
+        strategy.names[idA] = stored
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        // Codex cut the name to 48 graphemes, then collapsed its double spaces: 43 are left.
+        val visible = "Investigate flaky integration tests in t..."
+        tracker.onApplicationTitleChanged(codexTitle(idA, visible))
+        assertEquals(TabTitle("Investigate flaky…", CodexTitleParser.normalize(stored)), shown.last())
+    }
+
+    @Test
+    fun `a user name ending in dots keeps its own name`() {
+        val strategy = codexStrategy()
+        strategy.names[idA] = "Wait for it..."
+        val tracker = tracker(strategy)
+        tracker.attach(session())
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Wait for it..."))
+        scheduler.tick()
+        assertEquals(listOf(TabTitle("Wait for it...", "Wait for it...")), shown)
     }
 
     @Test
