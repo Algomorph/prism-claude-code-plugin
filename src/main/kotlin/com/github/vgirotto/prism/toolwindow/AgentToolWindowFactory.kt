@@ -23,6 +23,7 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
@@ -52,6 +53,7 @@ import javax.imageio.ImageIO
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.KeyStroke
+import javax.swing.MenuSelectionManager
 import javax.swing.SwingConstants
 import org.jetbrains.plugins.terminal.JBTerminalSystemSettingsProvider
 
@@ -259,10 +261,23 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
             // The picker takes focus so the press that closes it never reaches the terminal;
             // the gate covers the auto-repeat presses that arrive once the popup is gone.
-            EscapeKeyGate(terminalWidget.component, disposable)
+            val escapeGate = EscapeKeyGate(terminalWidget.component, disposable)
+
+            fun escapeIsBlocked(): Boolean =
+                escapeGate.isBlockingEscape() || JBPopupFactory.getInstance().isPopupActive ||
+                    MenuSelectionManager.defaultManager().selectedPath.isNotEmpty()
+
+            // IDE shortcut override can dispatch directly to the panel before our action.
+            terminalWidget.terminalPanel.addPreKeyEventHandler { event ->
+                handleTerminalEscape(event, escapeIsBlocked()) {
+                    AgentProcessManager.getInstance(project).sendText("\u001B")
+                }
+            }
 
             val escapeAction = object : DumbAwareAction() {
                 override fun actionPerformed(e: AnActionEvent) {
+                    if (escapeIsBlocked()) return
+
                     log.debug("Escape forwarded to the PTY")
                     AgentProcessManager.getInstance(project).sendText("\u001B")
                 }

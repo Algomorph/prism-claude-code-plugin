@@ -7,6 +7,7 @@ import java.awt.AWTEvent
 import java.awt.event.KeyEvent
 import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
+import javax.swing.MenuSelectionManager
 import javax.swing.SwingUtilities
 
 /**
@@ -35,13 +36,18 @@ internal class EscapeKeyGate(
         )
     }
 
+    fun isBlockingEscape(): Boolean = latch.isClosed()
+
     /** @return true to swallow [event] so neither the forwarding action nor the PTY sees it. */
     private fun dispatchEscape(event: AWTEvent): Boolean {
         if (event !is KeyEvent || !event.isEscape()) return false
         return when (event.id) {
             // A popup anywhere closes the latch, so onPress runs first for its side effect.
             KeyEvent.KEY_PRESSED ->
-                latch.onPress(JBPopupFactory.getInstance().isPopupActive) && isBoundForTerminal(event)
+                latch.onPress(
+                    JBPopupFactory.getInstance().isPopupActive ||
+                        MenuSelectionManager.defaultManager().selectedPath.isNotEmpty()
+                ) && isBoundForTerminal(event)
 
             KeyEvent.KEY_TYPED -> latch.isClosed() && isBoundForTerminal(event)
 
