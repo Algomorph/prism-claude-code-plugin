@@ -1,6 +1,6 @@
 # <img src="src/main/resources/icons/prism.svg" width="24" height="24" /> Prism — IDE Companion for Claude Code and Codex
 
-[![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![JetBrains](https://img.shields.io/badge/JetBrains-2024.3+-orange.svg)](https://plugins.jetbrains.com/)
 
@@ -101,7 +101,7 @@ Clique direito no editor para acessar: **Explain** / **Review** / **Fix** / **Ge
 
 ### 📋 Prompt Templates & Multi-Session
 
-[Prompt Templates](docs/prompt-templates.md) reutilizáveis com variáveis `{selection}`, `{file}`, `{language}`. Execute múltiplas sessões simultâneas em tabs independentes.
+[Prompt Templates](docs/prompt-templates.md) reutilizáveis com variáveis `{selection}`, `{file}`, `{language}`. Execute múltiplas sessões simultâneas em tabs independentes ou divididas lado a lado/empilhadas pelo menu Dividir Sessões na barra do Prism.
 
 <img src="docs/images/template-multisession.gif" width="80%" />
 

@@ -8,6 +8,7 @@ import com.github.vgirotto.prism.services.CodexValidationService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.DumbAwareAction
@@ -18,6 +19,7 @@ import com.intellij.ui.SimpleListCellRenderer
 import java.awt.KeyboardFocusManager
 import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
+import javax.swing.Icon
 
 /**
  * "+ New Session" entry point on the tool-window title bar.
@@ -30,11 +32,17 @@ import javax.swing.JComponent
  * used so its own installation/configuration error surfaces.
  */
 class NewSessionPopupAction(
-    private val createSessionTab: (AgentCli) -> Unit,
+    private val createSessionTab: (AgentCli, com.intellij.ui.content.ContentManager?) -> Unit,
+    private val targetManagerProvider: (AnActionEvent) -> com.intellij.ui.content.ContentManager? = {
+        it.getData(PlatformDataKeys.CONTENT_MANAGER)
+    },
+    text: String = PrismBundle.message("toolwindow.new.session"),
+    description: String = PrismBundle.message("toolwindow.new.session.desc"),
+    icon: Icon? = AllIcons.General.Add,
 ) : DumbAwareAction(
-    PrismBundle.message("toolwindow.new.session"),
-    PrismBundle.message("toolwindow.new.session.desc"),
-    AllIcons.General.Add,
+    text,
+    description,
+    icon,
 ) {
 
     private val log = Logger.getInstance(NewSessionPopupAction::class.java)
@@ -46,8 +54,9 @@ class NewSessionPopupAction(
         // popup/session UI back to the EDT.
         val clickedAtNanos = System.nanoTime()
         val anchor = e.inputEvent?.component as? JComponent
+        val targetManager = targetManagerProvider(e)
         ApplicationManager.getApplication().executeOnPooledThread {
-            val installed = installedCliS()
+            val installed = AgentCliAvailability.installed()
             val resolvedAtNanos = System.nanoTime()
             ApplicationManager.getApplication().invokeLater {
                 // The click-to-popup phase has no other trace in the log, and it is the
@@ -60,16 +69,20 @@ class NewSessionPopupAction(
                 )
                 when {
                     // Let createSessionTab surface the not-installed error for the default CLI.
-                    installed.isEmpty() -> createSessionTab(AgentSettingsState.getInstance().defaultCli)
+                    installed.isEmpty() -> createSessionTab(AgentSettingsState.getInstance().defaultCli, targetManager)
                     // Exactly one installed: launch it, not the (possibly absent) default.
-                    installed.size == 1 -> createSessionTab(installed.first())
-                    else -> showPicker(anchor, installed)
+                    installed.size == 1 -> createSessionTab(installed.first(), targetManager)
+                    else -> showPicker(anchor, installed, targetManager)
                 }
             }
         }
     }
 
-    private fun showPicker(anchor: JComponent?, installed: List<AgentCli>) {
+    private fun showPicker(
+        anchor: JComponent?,
+        installed: List<AgentCli>,
+        targetManager: com.intellij.ui.content.ContentManager?,
+    ) {
         val defaultCli = AgentSettingsState.getInstance().defaultCli
         val ordered = listOf(defaultCli).filter { it in installed } + (installed - defaultCli)
 
@@ -86,7 +99,7 @@ class NewSessionPopupAction(
                 }
             )
             .setRequestFocus(true)
-            .setItemChosenCallback { createSessionTab(it) }
+            .setItemChosenCallback { createSessionTab(it, targetManager) }
             .createPopup()
 
         // Give focus back on cancel; a chosen item is left alone, since the new tab takes it.
@@ -99,7 +112,7 @@ class NewSessionPopupAction(
             }
         })
 
-        if (anchor != null) {
+        if (anchor?.isShowing == true) {
             popup.showUnderneathOf(anchor)
         } else {
             popup.showInFocusCenter()
@@ -108,16 +121,34 @@ class NewSessionPopupAction(
 
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
-    private fun installedCliS(): List<AgentCli> {
+}
+
+/** Shared, short-lived CLI discovery for the + button and split submenus. */
+internal object AgentCliAvailability {
+    private const val CACHE_NANOS = 1_000_000_000L
+
+    @Volatile
+    private var cachedAtNanos = 0L
+
+    @Volatile
+    private var cached: List<AgentCli> = emptyList()
+
+    @Synchronized
+    fun installed(): List<AgentCli> {
+        val now = System.nanoTime()
+        if (cachedAtNanos != 0L && now - cachedAtNanos < CACHE_NANOS) return cached
+
         val settings = AgentSettingsState.getInstance()
         val list = mutableListOf<AgentCli>()
         if (ClaudeValidationService.getInstance().isClaudeAvailable(settings.claudePath)) list.add(AgentCli.CLAUDE)
         if (CodexValidationService.getInstance().isCodexAvailable(settings.codexPath)) list.add(AgentCli.CODEX)
-        return list
+        cached = list
+        cachedAtNanos = now
+        return cached
     }
 }
 
-private fun AgentCli.displayName(): String = when (this) {
+internal fun AgentCli.displayName(): String = when (this) {
     AgentCli.CLAUDE -> "Claude Code"
     AgentCli.CODEX -> "Codex"
 }

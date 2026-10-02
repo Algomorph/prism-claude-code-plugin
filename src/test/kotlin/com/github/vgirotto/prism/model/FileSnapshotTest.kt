@@ -51,6 +51,13 @@ class FileSnapshotTest {
     }
 
     @Test
+    fun `legacy session name initializes participant names`() {
+        val diff = InteractionDiff(1, 1000L, emptyList(), sessionName = "Chat #4")
+
+        assertEquals(listOf("Chat #4"), diff.sessionNames)
+    }
+
+    @Test
     fun `ChangeStatus enum values`() {
         assertEquals(3, ChangeStatus.entries.size)
     }

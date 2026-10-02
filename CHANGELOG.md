@@ -5,12 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.2] — Not yet published
+## [1.4.0] — 2026-10-02
 
 ### Added
 
-- **Terminal font and terminal settings**: the Prism terminal now uses the IDE terminal's own settings provider, so the font family, font size, and line spacing from Settings > Tools > Terminal > Font Settings apply — along with Ctrl+wheel zoom, live updates when those settings change, and the mouse-reporting, bell, and shortcut-override preferences set on that page. Prism's own keys (Ctrl+V, Shift+Enter and the agent shortcuts) operate with either setting of `Override IDE shortcuts`. With that setting on, the terminal gets each key before the IDE does, and its own actions use the keys of the IDE keymap. In recent IDE versions, such as 2026.2, the keymap binds Terminal > Paste to Ctrl+V on Linux. Prism therefore claims its keys in the terminal before the terminal's own actions. Otherwise, with an image on the clipboard, Ctrl+V sends a bare `^V`, and Claude Code cannot paste the image. Prism previously used the editor's console font at an unscaled size, which ignored a terminal font you had set and rendered tiny on HiDPI displays.
+- **Split agent sessions**: move Prism session tabs into right or bottom Tool Window splits, reunite them with Unsplit, or create a new independent session directly in a split.
+- **Terminal font and terminal settings**: the Prism terminal now uses the IDE terminal's own settings provider, so the font family, font size, and line spacing from Settings > Tools > Terminal > Font Settings apply — along with Ctrl+wheel zoom, live updates when those settings change, and the mouse-reporting, bell, and shortcut-override preferences set on that page. Prism previously used the editor's console font at an unscaled size, which ignored a terminal font you had set and rendered tiny on HiDPI displays.
 - **Font Settings menu entry**: the options (⋮) menu of the Prism tool window now has a `Font Settings` entry, which opens the IDE's terminal settings page. The page is matched on its configurable ID, which is stable across releases and independent of the IDE's display language. The gear icon in the toolbar continues to open the settings of Prism.
+
+### Changed
+
+- **Session-targeted controls**: terminal shortcuts and toolbar actions now stay bound to their owning session when multiple panes are visible; editor actions continue targeting the last focused Prism session.
+- **Project-wide Diff timeline**: sequential sessions keep independent numbered interactions, while overlapping sessions share one baseline and produce one `Multiple chats` entry after every participant becomes idle.
+
+### Fixed
+
+- **Terminal keys**: ESC, Shift+Enter, Ctrl+V (including image paste on Linux), and agent shortcuts work with `Override IDE shortcuts` enabled or disabled.
+- **Startup lifecycle**: closing a session while its PTY is starting can no longer attach a terminal after disposal or leave an orphan process.
+- **Diff snapshot coordination**: opening another session, startup output, tab selection, and manual refresh no longer reset pending work or append duplicate interaction numbers.
 
 ## [1.3.1] — 2026-08-26
 

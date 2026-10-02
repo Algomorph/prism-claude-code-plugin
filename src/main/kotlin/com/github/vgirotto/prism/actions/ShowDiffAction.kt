@@ -1,7 +1,6 @@
 package com.github.vgirotto.prism.actions
 
-import com.github.vgirotto.prism.services.FileSnapshotService
-import com.intellij.openapi.application.ApplicationManager
+import com.github.vgirotto.prism.toolwindow.GlobalDiffContentHost
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -12,13 +11,11 @@ class ShowDiffAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
 
-        ApplicationManager.getApplication().executeOnPooledThread {
-            FileSnapshotService.getInstance(project).refreshVfsAndComputeDiff()
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                ToolWindowManager.getInstance(project)
-                    .getToolWindow("Prism")
-                    ?.activate(null)
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Prism") ?: return
+        toolWindow.activate {
+            GlobalDiffContentHost.get(toolWindow)?.apply {
+                show()
+                refreshDiff()
             }
         }
     }

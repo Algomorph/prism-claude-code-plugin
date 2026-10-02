@@ -1,5 +1,6 @@
 package com.github.vgirotto.prism.toolwindow
 
+import com.github.vgirotto.prism.model.InteractionDiff
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -11,6 +12,25 @@ import org.junit.jupiter.api.Test
  * position, e.g. via `<img src=...>` remote fetches or arbitrary tag/style injection.
  */
 class DiffPanelTest {
+
+    @Test
+    fun `single participant keeps its chat label`() {
+        val diff = InteractionDiff(11, 1000L, emptyList(), sessionNames = listOf("Chat #4"))
+
+        assertEquals("Chat #4", interactionSessionLabel(diff, "Multiple chats"))
+    }
+
+    @Test
+    fun `overlapping participants use the multiple chats label`() {
+        val diff = InteractionDiff(
+            11,
+            1000L,
+            emptyList(),
+            sessionNames = listOf("Chat #4", "Chat #5"),
+        )
+
+        assertEquals("Multiple chats", interactionSessionLabel(diff, "Multiple chats"))
+    }
 
     @Test
     fun `plain file names render unescaped`() {

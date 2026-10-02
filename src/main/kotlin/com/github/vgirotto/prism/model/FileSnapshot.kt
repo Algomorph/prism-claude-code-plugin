@@ -32,4 +32,5 @@ data class InteractionDiff(
     val timestamp: Long,
     val changes: List<FileDiffEntry>,
     val sessionName: String = "",
+    val sessionNames: List<String> = sessionName.takeIf { it.isNotBlank() }?.let(::listOf) ?: emptyList(),
 )

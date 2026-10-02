@@ -15,13 +15,14 @@
     <h3>Features</h3>
     <ul>
         <li><strong>Interactive Terminal</strong> — Full ANSI color support via PTY (pty4j + JediTerm)</li>
+        <li><strong>Terminal Settings</strong> — Use the IDE's terminal font, size, and line spacing, with zoom and live updates</li>
         <li><strong>Multi-Agent</strong> — Run Claude Code and Codex sessions side by side; pick at session start</li>
         <li><strong>Agent Changes Panel</strong> — Per-interaction diff view with history navigation and one-click revert</li>
         <li><strong>Context Menu</strong> — Explain, Review, Fix, Generate Tests, Refactor from the editor</li>
         <li><strong>Toolbar</strong> — Resume, Compact, Clear, Model, Effort, Cost, Templates, and Settings, each mapped to the active agent's own commands</li>
         <li><strong>Prompt Templates</strong> — Reusable templates with {selection}, {file}, {language} variables</li>
         <li><strong>Conversation History</strong> — Browse and resume past conversations from the active agent with full-text search</li>
-        <li><strong>Multi-Session</strong> — Multiple simultaneous sessions in independent tabs</li>
+        <li><strong>Multi-Session &amp; Split Views</strong> — Run independent sessions in tabs or split panes to the right or below, where supported by the IDE</li>
         <li><strong>Status Bar Widget</strong> — Real-time session state (working/idle/stopped)</li>
         <li><strong>i18n</strong> — English, Portuguese, Spanish</li>
     </ul>
@@ -49,10 +50,15 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h2>v1.3.2 — Terminal Font</h2>
+    <h2>v1.4.0 — Split Sessions &amp; Terminal Settings</h2>
     <ul>
+        <li>New: split Prism sessions to the right or bottom, or create a new independent session directly in a split</li>
         <li>New: the embedded terminal now uses the IDE terminal's own settings — <strong>font family, size, and line spacing</strong> from Settings &gt; Tools &gt; Terminal, plus Ctrl+wheel zoom and live updates — instead of the editor's console font at an unscaled size (which rendered tiny on HiDPI displays)</li>
         <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
+        <li>Change: terminal shortcuts and toolbar controls target their owning session when multiple panes are visible</li>
+        <li>Change: overlapping sessions share one project-wide Diff entry labeled Multiple chats</li>
+        <li>Fix: closing a tab during PTY startup cannot attach a disposed terminal or leave an orphan process</li>
+        <li>Fix: new sessions, startup output, tab selection, and refresh no longer reset or duplicate pending Diff interactions</li>
     </ul>
     <h2>v1.3.1 — Stability &amp; Security Fixes</h2>
     <ul>

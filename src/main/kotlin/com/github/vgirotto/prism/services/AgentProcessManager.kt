@@ -3,6 +3,7 @@ package com.github.vgirotto.prism.services
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.AgentSession
 import com.github.vgirotto.prism.model.AgentSession.SessionState
+import com.github.vgirotto.prism.model.InteractionDiff
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -32,7 +33,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
         private set
 
     /** Listeners notified when the agent finishes responding (idle detected) */
-    private val idleListeners = mutableListOf<(String) -> Unit>()
+    private val idleListeners = mutableListOf<(InteractionDiff) -> Unit>()
 
     /** Listeners notified when session state changes */
     private val stateListeners = mutableListOf<(AgentSession) -> Unit>()
@@ -57,8 +58,25 @@ class AgentProcessManager(private val project: Project) : Disposable {
         val connector: TtyConnector,
     )
 
-    fun addIdleListener(listener: (String) -> Unit) {
+    fun addIdleListener(listener: (InteractionDiff) -> Unit) {
         idleListeners.add(listener)
+    }
+
+    private fun notifyIdleListeners(diff: InteractionDiff?) {
+        if (diff == null || diff.changes.isEmpty()) return
+        ApplicationManager.getApplication().invokeLater {
+            for (listener in idleListeners) {
+                try { listener(diff) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /** Queues finish before making the session eligible for another interaction. */
+    private fun queueInteractionCompletion(session: AgentSession): Boolean = synchronized(session) {
+        if (!session.snapshotTakenForCurrentInput) return@synchronized false
+        FileSnapshotService.getInstance(project).finishInteractionAsync(session.id, ::notifyIdleListeners)
+        session.snapshotTakenForCurrentInput = false
+        true
     }
 
     fun addStateListener(listener: (AgentSession) -> Unit) {
@@ -149,13 +167,14 @@ class AgentProcessManager(private val project: Project) : Disposable {
             activeSessionId = session.id
         }
 
-        // Reset snapshot to a fresh full copy of the current project state.
-        // Using resetSnapshot() (not takeSnapshot()) ensures the new baseline includes any changes
-        // made by previous sessions, so the startup idle does not create a spurious interaction.
-        try {
-            FileSnapshotService.getInstance(project).resetSnapshot()
-        } catch (e: Exception) {
-            log.debug("Failed to reset snapshot for new session", e)
+        // A new project session needs an initial project-wide baseline. Additional
+        // sessions share that baseline and must not erase an interaction in progress.
+        if (sessions.size == 1) {
+            try {
+                FileSnapshotService.getInstance(project).resetSnapshotIfNoActiveInteraction()
+            } catch (e: Exception) {
+                log.debug("Failed to reset snapshot for first session", e)
+            }
         }
 
         startIdleMonitor(session)
@@ -182,18 +201,27 @@ class AgentProcessManager(private val project: Project) : Disposable {
     }
 
     private fun onUserInput(session: AgentSession) {
-        session.userHasInteracted = true
-        if (!session.snapshotTakenForCurrentInput) {
-            session.snapshotTakenForCurrentInput = true
-            session.idleFiredForCurrentInteraction = false
-            try {
-                val snapshotService = FileSnapshotService.getInstance(project)
-                snapshotService.lastSessionName = session.name
-                snapshotService.takeSnapshot()
-                log.info("Snapshot taken on user input [${session.id}]")
-            } catch (e: Exception) {
-                log.debug("Failed to take snapshot on input", e)
+        beginInteraction(session)
+    }
+
+    private fun beginInteraction(session: AgentSession) {
+        val shouldBegin = synchronized(session) {
+            session.userHasInteracted = true
+            if (session.snapshotTakenForCurrentInput) false
+            else {
+                session.snapshotTakenForCurrentInput = true
+                session.idleFiredForCurrentInteraction = false
+                true
             }
+        }
+        if (!shouldBegin) return
+
+        try {
+            FileSnapshotService.getInstance(project).beginInteraction(session.id, session.name)
+            log.info("Project interaction started [${session.id}]")
+        } catch (e: Exception) {
+            synchronized(session) { session.snapshotTakenForCurrentInput = false }
+            log.debug("Failed to start project interaction", e)
         }
     }
 
@@ -273,16 +301,11 @@ class AgentProcessManager(private val project: Project) : Disposable {
                 if (session.outputActive && idle >= 2000 && !session.idleFiredForCurrentInteraction) {
                     session.outputActive = false
                     session.idleFiredForCurrentInteraction = true
-                    session.snapshotTakenForCurrentInput = false // Reset for next interaction
                     session.connector?.tryParseStartup()
+                    queueInteractionCompletion(session)
                     session.state = SessionState.IDLE
                     notifyStateListeners(session)
                     log.info("Idle detected [${session.id}], triggering auto-refresh")
-                    ApplicationManager.getApplication().invokeLater {
-                        for (listener in idleListeners) {
-                            try { listener(session.id) } catch (_: Exception) {}
-                        }
-                    }
                 }
             }
         }, 1000, 500)
@@ -296,6 +319,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
                 val process = session.process ?: return
                 if (!process.isAlive && session.state != SessionState.STOPPED) {
                     log.warn("Process died unexpectedly [${session.id}]")
+                    queueInteractionCompletion(session)
                     session.state = SessionState.STOPPED
                     notifyStateListeners(session)
                     ApplicationManager.getApplication().invokeLater {
@@ -342,15 +366,9 @@ class AgentProcessManager(private val project: Project) : Disposable {
             session.outputActive = false
         }
 
-        // Take snapshot before sending user input (but not for slash commands)
+        // Start a project-wide interaction before sending user input (but not slash commands).
         if (text.endsWith("\n") && text.trim().isNotEmpty() && !trimmed.startsWith("/")) {
-            try {
-                val snapshotService = FileSnapshotService.getInstance(project)
-                snapshotService.lastSessionName = session.name
-                snapshotService.takeSnapshot()
-            } catch (e: Exception) {
-                log.debug("Failed to take snapshot", e)
-            }
+            beginInteraction(session)
         }
 
         // Codex treats a "type text then newline" burst arriving in one write as a
@@ -452,7 +470,12 @@ class AgentProcessManager(private val project: Project) : Disposable {
 
     /** Optimistically records the active session's effort and notifies the UI. */
     fun setSessionEffort(effort: String) {
-        val session = activeSession ?: return
+        setSessionEffort(effort, activeSessionId)
+    }
+
+    /** Optimistically records a specific session's effort and notifies the UI. */
+    fun setSessionEffort(effort: String, sessionId: String?) {
+        val session = sessionId?.let { sessions[it] } ?: return
         session.effort = effort
         notifyStateListeners(session)
     }
@@ -466,12 +489,17 @@ class AgentProcessManager(private val project: Project) : Disposable {
      */
     fun destroySession(sessionId: String) {
         val session = sessions.remove(sessionId) ?: return
+        queueInteractionCompletion(session)
         session.dispose()
         log.info("Session destroyed: ${session.name} [${session.id}]")
 
         if (activeSessionId == sessionId) {
-            activeSessionId = sessions.keys.firstOrNull()
-            activeSession?.let { notifyStateListeners(it) }
+            val fallbackId = sessions.keys.firstOrNull()
+            if (fallbackId != null) {
+                setActiveSession(fallbackId)
+            } else {
+                activeSessionId = null
+            }
         }
     }
 

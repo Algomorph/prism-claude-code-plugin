@@ -14,6 +14,8 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
@@ -30,14 +32,14 @@ import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.terminal.JBTerminalWidget
-import com.intellij.ui.JBSplitter
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
+import com.intellij.ui.content.Content
+import com.intellij.ui.content.ContentManager
 import java.awt.BorderLayout
+import java.awt.KeyboardFocusManager
 import java.awt.Image
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -48,13 +50,14 @@ import java.awt.image.RenderedImage
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.beans.PropertyChangeListener
 import javax.imageio.ImageIO
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.MenuSelectionManager
 import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
 import org.jetbrains.plugins.terminal.JBTerminalSystemSettingsProvider
 
 class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
@@ -63,7 +66,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
     companion object {
         val SESSION_ID_KEY = Key.create<String>("AgentSessionId")
-        val DIFF_PANEL_KEY = Key.create<DiffPanel>("AgentDiffPanel")
+
+        private val chatNamePattern = Regex("""^Chat #(\d+)$""")
 
         private const val TERMINAL_CONFIGURABLE_ID = "terminal"
 
@@ -75,55 +79,75 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         internal fun supportsDedicatedTerminalFontSettings(build: BuildNumber): Boolean =
             build >= TERMINAL_FONT_SETTINGS_SINCE_BUILD
 
-        private var sessionCounter = 0
-
-        fun nextSessionName(): String {
-            sessionCounter++
-            return "Chat #$sessionCounter"
-        }
-
-        fun resetCounter() {
-            sessionCounter = 0
+        /**
+         * Names the next tab from the highest "Chat #N" currently open in this tool window,
+         * rather than a static counter. `canCloseContents="true"` (plugin.xml) makes the platform
+         * re-invoke [createToolWindowContent] — and previously reset a shared counter — whenever
+         * this tool window's content is reinitialized, which produced duplicate tab names when
+         * older tabs were still around. Scoping to the currently open tabs makes the name
+         * collision-proof regardless of how many times that happens.
+         */
+        fun nextSessionName(toolWindow: ToolWindow): String {
+            val highest = toolWindow.contentManager.contentsRecursively
+                .mapNotNull { chatNamePattern.matchEntire(it.displayName.orEmpty())?.groupValues?.get(1)?.toIntOrNull() }
+                .maxOrNull() ?: 0
+            return "Chat #${highest + 1}"
         }
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        resetCounter()
-
-        var changesVisible = AgentSettingsState.getInstance().showChangesOnStartup
-        var lastProportion = 0.65f
+        val changesVisibleOnStartup = AgentSettingsState.getInstance().showChangesOnStartup
+        val splitSupport = ToolWindowTabSplitSupport(toolWindow)
+        val globalDiffHost = GlobalDiffContentHost.install(project, toolWindow, splitSupport)
 
         // Toggle action for the Changes panel
         val toggleChangesAction = object : ToggleAction(
             PrismBundle.message("toolwindow.toggle.changes"),
-            if (changesVisible) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes"),
+            if (changesVisibleOnStartup) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes"),
             AllIcons.Actions.PreviewDetails
         ), DumbAware {
-            override fun isSelected(e: AnActionEvent): Boolean = changesVisible
+            override fun isSelected(e: AnActionEvent): Boolean {
+                return globalDiffHost.isVisible()
+            }
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                changesVisible = state
-                val activeContent = toolWindow.contentManager.selectedContent ?: return
-                val splitter = activeContent.component as? JBSplitter ?: return
-                val dp = activeContent.getUserData(DIFF_PANEL_KEY) ?: return
                 if (state) {
-                    splitter.secondComponent = dp
-                    splitter.proportion = lastProportion
+                    globalDiffHost.show()
                 } else {
-                    lastProportion = splitter.proportion
-                    splitter.secondComponent = null
+                    globalDiffHost.hide()
                 }
             }
 
             override fun update(e: AnActionEvent) {
                 super.update(e)
-                e.presentation.text = if (changesVisible) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes")
+                e.presentation.text = if (isSelected(e)) PrismBundle.message("toolwindow.hide.changes") else PrismBundle.message("toolwindow.show.changes")
             }
+
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
         }
 
         val newSessionAction = NewSessionPopupAction(
-            createSessionTab = { cli -> createSessionTab(project, toolWindow, changesVisible, cli) },
+            createSessionTab = { cli, manager ->
+                createSessionTab(project, toolWindow, changesVisibleOnStartup, cli, manager)
+            },
+            targetManagerProvider = { resolveActionManager(project, toolWindow, it) },
         )
+
+        val splitActions = DefaultActionGroup(
+            PrismBundle.message("toolwindow.split"), true,
+        ).apply {
+            templatePresentation.icon = AllIcons.Actions.SplitVertically
+            add(createMoveSplitAction(project, toolWindow, splitSupport, SplitDirection.RIGHT))
+            add(createMoveSplitAction(project, toolWindow, splitSupport, SplitDirection.DOWN))
+            add(createUnsplitAction(project, toolWindow, splitSupport))
+            addSeparator()
+            add(createNewSessionSplitGroup(
+                project, toolWindow, changesVisibleOnStartup, splitSupport, SplitDirection.RIGHT,
+            ))
+            add(createNewSessionSplitGroup(
+                project, toolWindow, changesVisibleOnStartup, splitSupport, SplitDirection.DOWN,
+            ))
+        }
 
         val historyAction = object : DumbAwareAction(
             PrismBundle.message("toolwindow.history"), PrismBundle.message("toolwindow.history.desc"), AllIcons.Vcs.History
@@ -133,7 +157,11 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
-        toolWindow.setTitleActions(listOf(newSessionAction, historyAction, toggleChangesAction))
+        val titleActions = mutableListOf<com.intellij.openapi.actionSystem.AnAction>(newSessionAction)
+        if (splitSupport.isAvailable()) titleActions.add(splitActions)
+        titleActions.add(historyAction)
+        titleActions.add(toggleChangesAction)
+        toolWindow.setTitleActions(titleActions)
 
         if (supportsDedicatedTerminalFontSettings(ApplicationInfo.getInstance().build)) {
             val fontSettingsAction = object : DumbAwareAction(
@@ -156,26 +184,14 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 if (sessionId != null) {
                     AgentProcessManager.getInstance(project).setActiveSession(sessionId)
                 }
-                event.content.getUserData(DIFF_PANEL_KEY)?.refreshDiff()
+                globalDiffHost.refreshDiff()
             }
         })
 
-        // Idle listener: compute one new diff off the UI thread, then show it on all DiffPanels.
-        AgentProcessManager.getInstance(project).addIdleListener {
-            val panels = (0 until toolWindow.contentManager.contentCount).mapNotNull { i ->
-                toolWindow.contentManager.getContent(i)?.getUserData(DIFF_PANEL_KEY)
-            }
-            if (panels.isEmpty()) return@addIdleListener
-
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val diff = FileSnapshotService.getInstance(project).refreshVfsAndComputeDiff()
-                if (diff.changes.isEmpty()) return@executeOnPooledThread
-
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    panels.forEach { it.showDiff(diff) }
-                }
-            }
+        // Idle listener: compute one new diff off the UI thread, then update the global DiffPanel.
+        AgentProcessManager.getInstance(project).addIdleListener { diff ->
+            if (project.isDisposed) return@addIdleListener
+            globalDiffHost.showDiff(diff)
         }
 
         // Process death listener: notify when session dies unexpectedly
@@ -191,21 +207,22 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 .notify(project)
         }
 
-        // Create the first session tab
+        // Create the first session tab. The global Diff content is split from it
+        // after the asynchronous CLI preflight finishes.
         if (AgentSettingsState.getInstance().autoStartOnOpen) {
-            createSessionTab(project, toolWindow, changesVisible)
+            createSessionTab(project, toolWindow, changesVisibleOnStartup, globalDiffHost = globalDiffHost)
         }
     }
 
-    /**
-     * Creates a new tab with its own terminal session and DiffPanel.
-     * Each tab owns its DiffPanel — no shared component, no parent issues.
-     */
-    fun createSessionTab(
+    /** Creates a new tab with its own terminal session. */
+    internal fun createSessionTab(
         project: Project,
         toolWindow: ToolWindow,
         changesVisible: Boolean,
         cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
+        requestedManager: ContentManager? = null,
+        splitRequest: SplitRequest? = null,
+        globalDiffHost: GlobalDiffContentHost? = null,
     ) {
         // Validate the requested CLI is available before creating UI, using the
         // user-configured path so custom binary locations are honored. The check
@@ -214,6 +231,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         // the EDT, so resolve it on a pooled thread and build the tab UI back on
         // the EDT once the CLI is confirmed present.
         val settings = AgentSettingsState.getInstance()
+        val effectiveGlobalDiffHost = globalDiffHost ?: GlobalDiffContentHost.get(toolWindow)
         ApplicationManager.getApplication().executeOnPooledThread {
             // Keep the resolved command, not just a yes/no: the session launches this
             // exact binary with the configured literal arguments.
@@ -232,10 +250,19 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             ApplicationManager.getApplication().invokeLater {
                 if (resolvedCommand == null) {
                     log.warn("${cli.name.lowercase()} CLI not found at configured path or on PATH")
-                    showCliNotFoundError(project, toolWindow, cli)
+                    showCliNotFoundError(project, toolWindow, cli, requestedManager)
                     return@invokeLater
                 }
-                buildSessionTab(project, toolWindow, changesVisible, cli, resolvedCommand)
+                buildSessionTab(
+                    project,
+                    toolWindow,
+                    changesVisible,
+                    cli,
+                    resolvedCommand,
+                    validManager(toolWindow, requestedManager),
+                    splitRequest,
+                    effectiveGlobalDiffHost,
+                )
             }
         }
     }
@@ -251,6 +278,9 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         changesVisible: Boolean,
         cli: AgentCli,
         resolvedCommand: ResolvedCliCommand,
+        targetManager: ContentManager,
+        splitRequest: SplitRequest?,
+        globalDiffHost: GlobalDiffContentHost?,
     ) {
         val disposable = Disposer.newDisposable("AgentSession")
         Disposer.register(toolWindow.disposable, disposable)
@@ -258,6 +288,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         try {
             val settingsProvider = JBTerminalSystemSettingsProvider()
             val terminalWidget = JBTerminalWidget(project, settingsProvider, disposable)
+            val binding = SessionUiBinding(project, cli)
 
             // The picker takes focus so the press that closes it never reaches the terminal;
             // the gate covers the auto-repeat presses that arrive once the popup is gone.
@@ -270,7 +301,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // IDE shortcut override can dispatch directly to the panel before our action.
             terminalWidget.terminalPanel.addPreKeyEventHandler { event ->
                 handleTerminalEscape(event, escapeIsBlocked()) {
-                    AgentProcessManager.getInstance(project).sendText("\u001B")
+                    binding.sendText("\u001B")
                 }
             }
 
@@ -279,7 +310,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     if (escapeIsBlocked()) return
 
                     log.debug("Escape forwarded to the PTY")
-                    AgentProcessManager.getInstance(project).sendText("\u001B")
+                    binding.sendText("\u001B")
                 }
             }
             escapeAction.registerCustomShortcutSet(
@@ -295,7 +326,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
             // Shift+Enter sends CSI u escape sequence for newline without submitting
             keys.bind(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK)) {
-                AgentProcessManager.getInstance(project).sendText("\u001b[13;2u")
+                binding.sendText("\u001b[13;2u")
             }
 
             // Ctrl+V is handled specially per platform (see below). The rest are
@@ -313,7 +344,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             )
 
             for ((keyStroke, sequence) in cliShortcuts) {
-                keys.bind(keyStroke) { AgentProcessManager.getInstance(project).sendText(sequence) }
+                keys.bind(keyStroke) { binding.sendText(sequence) }
             }
 
             // Ctrl+V: on Linux IntelliJ swallows the keystroke before it reaches
@@ -322,55 +353,24 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // Windows the native passthrough works well (Cmd+V pastes text, Ctrl+V
             // pastes images via the agent CLI), so we leave it untouched.
             keys.bind(KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK)) {
-                if (SystemInfo.isLinux) handleSmartPaste(project) else AgentProcessManager.getInstance(project).sendText("\u0016")
+                if (SystemInfo.isLinux) {
+                    handleSmartPaste(binding)
+                } else {
+                    binding.sendText("\u0016")
+                }
             }
 
-            val toolbar = AgentToolbar(project)
+            val toolbar = AgentToolbar(project, binding)
             val terminalWithToolbar = JPanel(BorderLayout()).apply {
                 add(toolbar, BorderLayout.NORTH)
                 add(terminalWidget.component, BorderLayout.CENTER)
             }
 
-            // Each tab gets its own DiffPanel (no parent-sharing issues)
-            val diffPanel = DiffPanel(project) {
-                // When history is cleared, reset ALL DiffPanels across all tabs
-                for (i in 0 until toolWindow.contentManager.contentCount) {
-                    toolWindow.contentManager.getContent(i)
-                        ?.getUserData(DIFF_PANEL_KEY)
-                        ?.clearAndReset()
-                }
-            }
-
-            val isSideDock = toolWindow.anchor == ToolWindowAnchor.LEFT ||
-                toolWindow.anchor == ToolWindowAnchor.RIGHT
-
-            val splitter = JBSplitter(isSideDock, if (isSideDock) 0.6f else 0.65f).apply {
-                firstComponent = terminalWithToolbar
-                dividerWidth = 3
-            }
-
-            if (changesVisible) {
-                splitter.secondComponent = diffPanel
-            }
-
-            splitter.addHierarchyListener {
-                val tw = ToolWindowManager.getInstance(project).getToolWindow("Prism")
-                if (tw != null) {
-                    val shouldBeVertical = tw.anchor == ToolWindowAnchor.LEFT ||
-                        tw.anchor == ToolWindowAnchor.RIGHT
-                    if (splitter.orientation != shouldBeVertical) {
-                        splitter.orientation = shouldBeVertical
-                        splitter.proportion = if (shouldBeVertical) 0.6f else 0.65f
-                    }
-                }
-            }
-
-            val sessionName = nextSessionName()
-            val content = toolWindow.contentManager.factory.createContent(
-                splitter, sessionName, false
+            val sessionName = nextSessionName(toolWindow)
+            val content = targetManager.factory.createContent(
+                terminalWithToolbar, sessionName, false
             )
             content.isCloseable = true
-            content.putUserData(DIFF_PANEL_KEY, diffPanel)
 
             // The session lives and dies with the tab, and only tab *disposal* means the
             // tab is gone. Reordering tabs by dragging one removes its Content with
@@ -379,17 +379,19 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // tab's PTY: the tab came back with its terminal painted but frozen, since
             // nothing was left on the other end of it. Every real close path (tab X, Close
             // Tab, Close All) removes with dispose = true, which runs this disposer.
-            val tabClosed = AtomicBoolean(false)
             content.setDisposer {
-                tabClosed.set(true)
-                content.getUserData(SESSION_ID_KEY)?.let { sessionId ->
+                binding.dispose()?.let { sessionId ->
                     AgentProcessManager.getInstance(project).destroySession(sessionId)
                 }
                 Disposer.dispose(disposable)
             }
 
-            toolWindow.contentManager.addContent(content)
-            toolWindow.contentManager.setSelectedContent(content)
+            targetManager.addContent(content)
+            targetManager.setSelectedContent(content)
+
+            installFocusActivation(terminalWithToolbar, disposable, binding)
+            splitRequest?.let { it.support.perform(it.direction, targetManager, terminalWidget.component) }
+            globalDiffHost?.sessionCreated(content, changesVisible)
 
             // Start agent session
             ApplicationManager.getApplication().executeOnPooledThread {
@@ -397,22 +399,22 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     val pm = AgentProcessManager.getInstance(project)
                     val result = pm.createSession(sessionName, cli, resolvedCommand)
 
-                    content.putUserData(SESSION_ID_KEY, result.sessionId)
-
-                    // The tab can be closed while the PTY is still spawning, before the
-                    // session ID the disposer looks for exists. Tear it down here instead
-                    // of leaving an orphaned agent process behind.
-                    if (tabClosed.get()) {
+                    if (!binding.attach(result.sessionId)) {
                         pm.destroySession(result.sessionId)
                         return@executeOnPooledThread
                     }
+                    content.putUserData(SESSION_ID_KEY, result.sessionId)
 
-                    pm.setActiveSession(result.sessionId)
+                    binding.activate()
 
                     ApplicationManager.getApplication().invokeLater {
+                        if (!binding.isAttached(result.sessionId) || content.manager == null) {
+                            return@invokeLater
+                        }
                         try {
                             terminalWidget.createTerminalSession(result.connector)
                             terminalWidget.start()
+                            terminalWidget.component.requestFocusInWindow()
                             log.info("Agent session started: $sessionName [${result.sessionId}]")
                         } catch (e: Exception) {
                             log.error("Failed to connect terminal session", e)
@@ -426,15 +428,14 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         } catch (e: Exception) {
             log.error("Failed to create agent terminal widget", e)
-            showFallbackContent(project, toolWindow, e.message ?: "Unknown error")
+            showFallbackContent(toolWindow, e.message ?: "Unknown error")
         }
     }
 
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {
-        for (i in 0 until toolWindow.contentManager.contentCount) {
-            val content = toolWindow.contentManager.getContent(i)
-            if (content?.displayName == PrismBundle.message("toolwindow.tab.history")) {
-                toolWindow.contentManager.setSelectedContent(content)
+        for (content in toolWindow.contentManager.contentsRecursively) {
+            if (content.displayName == PrismBundle.message("toolwindow.tab.history")) {
+                content.manager?.setSelectedContent(content)
                 // History is scoped to the active session's CLI, which may have changed
                 // to another agent since this tab was built.
                 (content.component as? HistoryPanel)?.loadHistory()
@@ -442,14 +443,149 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
+        val manager = findActiveContent(project, toolWindow)?.manager ?: toolWindow.contentManager
         val historyPanel = HistoryPanel(project)
-        val content = toolWindow.contentManager.factory.createContent(
+        val content = manager.factory.createContent(
             historyPanel, PrismBundle.message("toolwindow.tab.history"), false
         )
         content.isCloseable = true
-        toolWindow.contentManager.addContent(content)
-        toolWindow.contentManager.setSelectedContent(content)
+        manager.addContent(content)
+        manager.setSelectedContent(content)
         historyPanel.loadHistory()
+    }
+
+    private fun validManager(toolWindow: ToolWindow, requestedManager: ContentManager?): ContentManager =
+        requestedManager?.takeUnless { it.isDisposed } ?: toolWindow.contentManager
+
+    private fun findActiveContent(project: Project, toolWindow: ToolWindow): Content? =
+        resolveActiveSessionContent(project, toolWindow)
+
+    private fun createMoveSplitAction(
+        project: Project,
+        toolWindow: ToolWindow,
+        support: ToolWindowTabSplitSupport,
+        direction: SplitDirection,
+    ) = object : DumbAwareAction(
+        PrismBundle.message(
+            if (direction == SplitDirection.RIGHT) "toolwindow.split.move.right"
+            else "toolwindow.split.move.down"
+        ),
+        null,
+        if (direction == SplitDirection.RIGHT) AllIcons.Actions.SplitVertically
+        else AllIcons.Actions.SplitHorizontally,
+    ) {
+        override fun actionPerformed(e: AnActionEvent) {
+            val manager = resolveActionManager(project, toolWindow, e)
+            val context = manager.selectedContent?.component ?: e.inputEvent?.component ?: return
+            support.perform(direction, manager, context)
+        }
+
+        override fun update(e: AnActionEvent) {
+            val manager = resolveActionManager(project, toolWindow, e)
+            e.presentation.isEnabledAndVisible = support.isAvailable(direction) && manager.contentCount > 1
+        }
+
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    }
+
+    private fun createUnsplitAction(
+        project: Project,
+        toolWindow: ToolWindow,
+        support: ToolWindowTabSplitSupport,
+    ) = object : DumbAwareAction(
+        PrismBundle.message("toolwindow.split.unsplit"),
+        null,
+        AllIcons.Actions.Collapseall,
+    ) {
+        override fun actionPerformed(e: AnActionEvent) {
+            val manager = resolveActionManager(project, toolWindow, e)
+            val context = manager.selectedContent?.component ?: e.inputEvent?.component ?: return
+            support.perform(SplitDirection.UNSPLIT, manager, context)
+        }
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabledAndVisible = support.isAvailable(SplitDirection.UNSPLIT)
+        }
+
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    }
+
+    private fun createNewSessionSplitGroup(
+        project: Project,
+        toolWindow: ToolWindow,
+        changesVisible: Boolean,
+        support: ToolWindowTabSplitSupport,
+        direction: SplitDirection,
+    ): DefaultActionGroup {
+        val isRight = direction == SplitDirection.RIGHT
+        return DefaultActionGroup(
+            PrismBundle.message(
+                if (isRight) "toolwindow.split.new.right" else "toolwindow.split.new.down"
+            ),
+            true,
+        ).apply {
+            templatePresentation.description = PrismBundle.message(
+                if (isRight) "toolwindow.split.new.right.desc" else "toolwindow.split.new.down.desc"
+            )
+            templatePresentation.icon =
+                if (isRight) AllIcons.Actions.SplitVertically else AllIcons.Actions.SplitHorizontally
+
+            val defaultCli = AgentSettingsState.getInstance().defaultCli
+            for (cli in listOf(defaultCli) + (AgentCli.values().toList() - defaultCli)) {
+                add(object : DumbAwareAction(cli.displayName()) {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        val manager = resolveActionManager(project, toolWindow, e)
+                        createSessionTab(
+                            project,
+                            toolWindow,
+                            changesVisible,
+                            cli,
+                            manager,
+                            SplitRequest(direction, support),
+                        )
+                    }
+
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.isEnabledAndVisible =
+                            support.isAvailable(direction) && cli in AgentCliAvailability.installed()
+                    }
+
+                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                })
+            }
+        }
+    }
+
+    private fun resolveActionManager(
+        project: Project,
+        toolWindow: ToolWindow,
+        event: AnActionEvent,
+    ): ContentManager {
+        val activeManager = findActiveContent(project, toolWindow)?.manager
+        val contextualManager = event.getData(PlatformDataKeys.CONTENT_MANAGER)
+        return if (activeManager != null && contextualManager === activeManager) {
+            contextualManager
+        } else {
+            activeManager ?: contextualManager?.takeUnless { it.isDisposed } ?: toolWindow.contentManager
+        }
+    }
+
+    private fun installFocusActivation(
+        component: java.awt.Component,
+        disposable: com.intellij.openapi.Disposable,
+        binding: SessionUiBinding,
+    ) {
+        val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+        val listener = PropertyChangeListener { event ->
+            val owner = event.newValue as? java.awt.Component ?: return@PropertyChangeListener
+            if (owner === component || SwingUtilities.isDescendingFrom(owner, component)) {
+                binding.activate()
+            }
+        }
+        focusManager.addPropertyChangeListener("permanentFocusOwner", listener)
+        Disposer.register(disposable) {
+            focusManager.removePropertyChangeListener("permanentFocusOwner", listener)
+        }
     }
 
     private fun openTerminalSettings(project: Project) {
@@ -461,7 +597,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         )
     }
 
-    private fun showCliNotFoundError(project: Project, toolWindow: ToolWindow, cli: AgentCli) {
+    private fun showCliNotFoundError(
+        project: Project,
+        toolWindow: ToolWindow,
+        cli: AgentCli,
+        requestedManager: ContentManager?,
+    ) {
         val (heading, installCmd, notificationTitle, message) = when (cli) {
             AgentCli.CLAUDE -> CliNotFoundCopy(
                 heading = "Claude not found",
@@ -486,8 +627,9 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 "</center></html>",
             SwingConstants.CENTER
         )
-        val content = toolWindow.contentManager.factory.createContent(label, "Error", false)
-        toolWindow.contentManager.addContent(content)
+        val manager = validManager(toolWindow, requestedManager)
+        val content = manager.factory.createContent(label, "Error", false)
+        manager.addContent(content)
 
         NotificationGroupManager.getInstance()
             .getNotificationGroup("Prism")
@@ -502,7 +644,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         val message: String,
     )
 
-    private fun showFallbackContent(project: Project, toolWindow: ToolWindow, error: String) {
+    private fun showFallbackContent(toolWindow: ToolWindow, error: String) {
         val label = JLabel(
             "<html><center>" +
                 "<h3>${PrismBundle.message("toolwindow.error.init")}</h3>" +
@@ -529,7 +671,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
      * PNG and paste the file path; otherwise paste clipboard text ourselves
      * wrapped in bracketed-paste escapes so multi-line content doesn't auto-submit.
      */
-    private fun handleSmartPaste(project: Project) {
+    private fun handleSmartPaste(binding: SessionUiBinding) {
         val clipboard = try {
             Toolkit.getDefaultToolkit().systemClipboard
         } catch (e: Exception) {
@@ -547,11 +689,11 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         if (imageFlavorAvailable) {
             val path = saveClipboardImageToTempFile(clipboard)
             if (path != null) {
-                sendBracketedPaste(project, "$path ")
+                sendBracketedPaste(binding, "$path ")
                 return
             }
             log.warn("SmartPaste: image flavor advertised but bytes could not be read; falling back to ^V")
-            AgentProcessManager.getInstance(project).sendText("\u0016")
+            binding.sendText("\u0016")
             return
         }
 
@@ -564,14 +706,14 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             null
         }
         if (text.isNullOrEmpty()) return
-        sendBracketedPaste(project, text)
+        sendBracketedPaste(binding, text)
     }
 
-    private fun sendBracketedPaste(project: Project, payload: String) {
+    private fun sendBracketedPaste(binding: SessionUiBinding, payload: String) {
         // Bracketed paste mode: tells the CLI this is pasted content so newlines
         // are treated as input rather than submit, and key sequences inside the
         // text aren't interpreted as shortcuts.
-        AgentProcessManager.getInstance(project).sendText("\u001b[200~$payload\u001b[201~")
+        binding.sendText("\u001b[200~$payload\u001b[201~")
     }
 
     private fun saveClipboardImageToTempFile(clipboard: java.awt.datatransfer.Clipboard): String? {
