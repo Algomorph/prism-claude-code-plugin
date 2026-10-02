@@ -2,11 +2,11 @@
 
 [![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![JetBrains](https://img.shields.io/badge/JetBrains-2024.3+-orange.svg)](https://plugins.jetbrains.com/)
+[![JetBrains](https://img.shields.io/badge/JetBrains-2024.3+-orange.svg)](https://plugins.jetbrains.com/plugin/31025-prism--ide-companion-for-claude-code-and-codex)
 
 > [Read in English](README.md)
 
-Plugin completo para JetBrains que integra o **Claude Code CLI** e o **OpenAI Codex CLI** diretamente na sua IDE — com interface gráfica, diff view por interação, histórico de conversas e suporte a múltiplas sessões.
+Plugin completo para JetBrains que integra o **Claude Code CLI** e o **OpenAI Codex CLI** diretamente na sua IDE — com interface gráfica, diff view por interação, histórico de conversas e múltiplas sessões em tabs ou painéis divididos.
 
 Prism é um **wrapper visual local** — ele executa cada CLI via PTY real e **não faz chamadas externas**. Você precisa ter o(s) CLI(s) instalado(s) e autenticado(s) de forma independente.
 
@@ -30,15 +30,25 @@ Prism é um **wrapper visual local** — ele executa cada CLI via PTY real e **n
 
 Pelo menos um dos CLIs é necessário. O botão "Nova Sessão" exibe um seletor quando ambos estão instalados.
 
-### Opção 1: Download do Release (Recomendado) ⭐
+### Opção 1: JetBrains Marketplace (Recomendado) ⭐
+
+Instale diretamente pelo [**JetBrains Marketplace**](https://plugins.jetbrains.com/plugin/31025-prism--ide-companion-for-claude-code-and-codex), o catálogo oficial de plugins da JetBrains — rápido e fácil.
+
+1. ⚙️ Na IDE, abra **Settings → Plugins → Marketplace**
+2. 🔎 Busque **Prism - IDE Companion for Claude Code and Codex** e clique em **Install**
+3. 🚀 Reinicie a IDE se solicitado e abra **View → Tool Windows → Prism**
+
+Pronto! 🎉 Você pode gerenciar futuras atualizações em **Settings → Plugins → Installed**.
+
+<img src="docs/images/marketplace.png" alt="Prism listado no JetBrains Marketplace" width="60%" />
+
+### Opção 2: Download pelo GitHub Releases 📦
 
 1. 📦 Baixe o `.zip` mais recente em [**Releases**](https://github.com/VGirotto/prism-claude-code-plugin/releases)
 2. ⚙️ Na IDE: **Settings → Plugins → ⚙️ Engrenagem → Install Plugin from Disk**
-3. 🔄 **Reinicie** a IDE — o painel "Prism" aparece na barra inferior
+3. 🚀 Reinicie a IDE se solicitado e abra **View → Tool Windows → Prism**
 
-Pronto! 🎉
-
-### Opção 2: Compilar Localmente 🔧
+### Opção 3: Compilar Localmente 🔧
 
 <details>
 <summary>Clique para expandir as instruções de build</summary>
@@ -47,8 +57,8 @@ Pronto! 🎉
 git clone https://github.com/VGirotto/prism-claude-code-plugin.git
 cd prism-claude-code-plugin
 
-# Defina JAVA_HOME se não tiver JDK global (17+)
-export JAVA_HOME="/caminho/para/sua/IDE.app/Contents/jbr/Contents/Home"
+# Defina JAVA_HOME para uma instalação do JDK 21
+export JAVA_HOME="/caminho/para/jdk-21"
 
 ./gradlew buildPlugin
 
@@ -69,6 +79,19 @@ Terminal completo do agente rodando dentro da IDE com suporte a cores ANSI e PTY
 Toolbar compacta com ações rápidas: **Resume**, **Compact**, **Clear**, **Model**, **Effort**, **Cost**, **Templates** e **Settings**. Todos os botões funcionam tanto em sessões Claude Code quanto Codex, mapeados para os comandos de cada agente (por exemplo, **Cost** executa `/cost` no Claude e abre as visões de atividade de tokens do `/usage` no Codex).
 
 <img src="docs/images/commands.gif" width="80%" />
+
+---
+
+### 🎨 Aparência do Terminal e Configurações de Fonte
+
+O Prism usa as configurações do terminal da IDE, permitindo personalizar sua aparência:
+
+- **Fonte, tamanho e espaçamento entre linhas**: abra **Settings → Tools → Terminal → Font Settings**. Nas IDEs 2025.1.1+, o menu de opções do Prism (**⋮ → Configurações de Fonte…**) leva você diretamente a essa página. As mudanças se aplicam aos terminais abertos do Prism, e **Ctrl+roda do mouse** ajusta o tamanho da fonte.
+- **Cores**: ajuste a paleta do terminal em **Settings → Editor → Color Scheme → Console Colors**. O tema escolhido no próprio CLI do agente também influencia a aparência da saída.
+
+Nas IDEs anteriores, as fontes ficam em **Settings → Editor → Color Scheme → Console Font**. A engrenagem na toolbar do agente abre as **configurações do Prism**; a opção **Configurações de Fonte** fica no menu de opções da tool window.
+
+<img src="docs/images/font-settings.png" alt="Terminal do Prism com a opção Font Settings no menu de opções da tool window" width="80%" />
 
 ---
 
@@ -99,9 +122,23 @@ Clique direito no editor para acessar: **Explain** / **Review** / **Fix** / **Ge
 
 ---
 
+### 🪟 Dividir Sessões (Split Sessions)
+
+Mantenha sessões do Claude Code e do Codex visíveis ao mesmo tempo, lado a lado ou empilhadas. Abra **Dividir Sessões** na barra de título do Prism para:
+
+- Mover a sessão selecionada para uma divisão **à direita** ou **abaixo**, quando houver várias tabs abertas no painel de origem.
+- Criar uma **nova sessão independente** diretamente em uma divisão à direita ou abaixo, escolhendo Claude Code ou Codex.
+- Usar **Remover Divisão de Sessões** para reunir os painéis novamente.
+
+Cada sessão mantém seu próprio terminal e toolbar. As ações do editor usam a última sessão do Prism que recebeu foco. O menu de divisão aparece quando a IDE suporta divisão de tabs de tool windows.
+
+<img src="docs/images/split.png" alt="Sessões do Claude Code e do Codex lado a lado com o menu Split Sessions aberto" width="80%" />
+
+---
+
 ### 📋 Prompt Templates & Multi-Session
 
-[Prompt Templates](docs/prompt-templates.md) reutilizáveis com variáveis `{selection}`, `{file}`, `{language}`. Execute múltiplas sessões simultâneas em tabs independentes ou divididas lado a lado/empilhadas pelo menu Dividir Sessões na barra do Prism.
+[Prompt Templates](docs/prompt-templates.md) reutilizáveis com variáveis `{selection}`, `{file}`, `{language}`. Mantenha múltiplas sessões independentes em tabs ou use Dividir Sessões para visualizá-las juntas.
 
 <img src="docs/images/template-multisession.gif" width="80%" />
 
