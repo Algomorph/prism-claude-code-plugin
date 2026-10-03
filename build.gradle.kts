@@ -19,6 +19,8 @@ kotlin {
 }
 
 dependencies {
+    implementation("org.commonmark:commonmark:0.30.0")
+
     intellijPlatform {
         val platformType = providers.gradleProperty("platformType")
         val platformVersion = providers.gradleProperty("platformVersion")
@@ -59,6 +61,21 @@ intellijPlatform {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.processResources {
+    val changelogFiles = listOf("CHANGELOG.md", "CHANGELOG.pt-BR.md", "CHANGELOG.es.md")
+        .map { layout.projectDirectory.file(it).asFile }
+
+    from(changelogFiles) {
+        into("changelog")
+    }
+
+    doFirst {
+        changelogFiles.forEach { changelogFile ->
+            check(changelogFile.isFile) { "Required changelog is missing: ${changelogFile.name}" }
+        }
+    }
 }
 
 tasks {

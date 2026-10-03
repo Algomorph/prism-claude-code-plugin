@@ -52,9 +52,10 @@
     <change-notes><![CDATA[
     <h2>v1.4.0 — Split Sessions &amp; Terminal Settings</h2>
     <ul>
+        <li>New: changelog viewer beside Prism settings, with Markdown formatting and offline English, Brazilian Portuguese, and Spanish history</li>
         <li>New: split Prism sessions to the right or bottom, or create a new independent session directly in a split</li>
-        <li>New: the embedded terminal now uses the IDE terminal's own settings — <strong>font family, size, and line spacing</strong> from Settings &gt; Tools &gt; Terminal, plus Ctrl+wheel zoom and live updates — instead of the editor's console font at an unscaled size (which rendered tiny on HiDPI displays)</li>
-        <li>New: <strong>Font Settings</strong> entry in the tool window's options (⋮) menu — opens that IDE settings page directly; the toolbar gear still opens Prism's own settings</li>
+        <li>New: the embedded terminal follows the IDE terminal settings for font, line spacing, zoom, and other preferences</li>
+        <li>New: <strong>Font Settings</strong> in the options (⋮) menu opens the IDE terminal settings; dedicated font settings and this menu entry require <strong>build 251.25410+ (IntelliJ IDEA 2025.1.1+)</strong>. The toolbar gear opens Prism settings</li>
         <li>Change: terminal shortcuts and toolbar controls target their owning session when multiple panes are visible</li>
         <li>Change: overlapping sessions share one project-wide Diff entry labeled Multiple chats</li>
         <li>Fix: closing a tab during PTY startup cannot attach a disposed terminal or leave an orphan process</li>

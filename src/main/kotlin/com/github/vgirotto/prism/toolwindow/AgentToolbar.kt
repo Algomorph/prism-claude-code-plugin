@@ -8,15 +8,15 @@ import com.github.vgirotto.prism.services.ContextProvider
 import com.github.vgirotto.prism.services.PromptTemplateService
 import com.github.vgirotto.prism.settings.AgentSettingsConfigurable
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.JBColor
@@ -86,6 +86,7 @@ internal class AgentToolbar(private val project: Project, private val binding: S
         }
 
         val rightGroup = DefaultActionGroup().apply {
+            add(ChangelogAction(project))
             add(SettingsAction(project))
         }
 
@@ -439,6 +440,19 @@ private class ClearAction(private val project: Project, private val binding: Ses
         }
     }
     override fun update(e: AnActionEvent) = e.gateToolbarItem(binding, ToolbarItem.CLEAR)
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+}
+
+private class ChangelogAction(private val project: Project) : AnAction(
+    PrismBundle.message("toolbar.changelog"),
+    PrismBundle.message("toolbar.changelog.desc"),
+    AllIcons.Actions.ListChanges,
+), DumbAware {
+
+    override fun actionPerformed(e: AnActionEvent) {
+        ChangelogDialog(project).show()
+    }
+
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 }
 
