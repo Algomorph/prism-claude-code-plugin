@@ -12,7 +12,8 @@ import java.nio.file.Path
  * The terminal title is the naming channel for every agent — each CLI updates it the moment the
  * chat is renamed, resumed or titled, so the tab name is whatever the CLI shows, with no file
  * matching. Session identity comes from wherever that CLI exposes it exactly (a Claude hook, a
- * Codex id prefix completed against Codex's own ids).
+ * Codex id prefix completed against Codex's own ids), and stays unknown where it does not; see
+ * [com.github.vgirotto.prism.model.AgentSession.identity].
  *
  * One instance per tab: implementations may keep per-tab read state. Supporting another agent
  * means adding one implementation and one line to [newSessionStrategy].

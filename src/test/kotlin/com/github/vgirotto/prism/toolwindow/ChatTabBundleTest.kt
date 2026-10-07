@@ -9,7 +9,7 @@ import java.util.Locale
 import java.util.ResourceBundle
 
 /**
- * Guards the chat-tab strings in every shipped locale (the i18n requirement, R21). Reads the
+ * Guards the chat-tab strings in every shipped locale. Reads the
  * resource bundles directly — with fallback disabled, so a key missing from es/pt fails here
  * instead of silently resolving to English at runtime.
  */

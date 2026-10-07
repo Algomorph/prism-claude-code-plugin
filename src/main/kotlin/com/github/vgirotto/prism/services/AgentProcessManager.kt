@@ -233,7 +233,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
     private val deterministicSupportByExecutable = ConcurrentHashMap<String, Boolean>()
 
     /**
-     * Cached runtime-capability probe for Claude's `--session-id` (design §6.5, R19).
+     * Cached runtime-capability probe for Claude's `--session-id`.
      *
      * Probes the executable the availability preflight resolved, not the raw setting: the
      * setting may carry arguments, and a bare name may not be on the IDE's own PATH, and

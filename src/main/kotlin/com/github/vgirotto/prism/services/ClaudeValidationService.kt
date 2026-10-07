@@ -46,12 +46,12 @@ class ClaudeValidationService {
     }
 
     /**
-     * Runtime-compatibility gate for the hybrid chat shell (design §6.5, §9, R19). The
-     * feature depends on deterministic session identity (`claude --session-id <uuid>`) and
-     * the tested JSONL schema. The **capability probe is authoritative** (does `--help`
-     * advertise `--session-id`?); the version string is only a fallback. When this returns
-     * false the strip/terminal keep working and the transcript pane shows an explicit
-     * "unavailable for this CLI version" state — never a guessed or broken file.
+     * True when this Claude accepts `--session-id <uuid>`, which gives a tab its conversation
+     * from the launch on (see [com.github.vgirotto.prism.model.AgentSession.identity]). The
+     * **capability probe is authoritative** (does `--help` advertise `--session-id`?); the
+     * version string is only a fallback. When this returns false, Claude is launched without the
+     * option: the tab is still named from the terminal title, and its conversation is unknown
+     * until the session hook reports it.
      */
     fun supportsDeterministicSessions(claudeCommand: String = "claude"): Boolean {
         // Primary: capability probe.
@@ -70,7 +70,7 @@ class ClaudeValidationService {
     }
 
     object VersionGate {
-        /** Tentative floor set in the Group 0 spike (first schema carrying uuid/parentUuid). */
+        /** The oldest Claude Code checked to accept `--session-id`; used only when `--help` cannot be read. */
         const val MIN_SUPPORTED_VERSION = "2.1.193"
 
         fun meetsMinimumVersion(version: String?): Boolean {

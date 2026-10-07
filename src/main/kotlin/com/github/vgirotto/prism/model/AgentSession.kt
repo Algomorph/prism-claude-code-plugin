@@ -38,12 +38,20 @@ class AgentSession(
     @Volatile var launchStartedAtNanos: Long = 0L
 
     /**
-     * The exact conversation this session shows, once known: the agent reports it on startup
-     * and on every switch (`/resume`, `/clear`, `/new`). Null while unknown; never guessed.
+     * The conversation this session shows, when Prism knows it; null while it does not. It is
+     * never guessed, but it is only as current as what the agent reports, and it can lag a switch:
      *
-     * It stays null for a Claude session whose configured command passes its own `--settings`:
-     * Prism cannot add its hook then, so no switch is reported, and the `--session-id` it was
-     * launched with would be wrong after the first `/resume` or `/clear`.
+     *  - **Claude**: the `--session-id` the session was launched with, until the session hook
+     *    reports the session at startup and at each `/resume`, `/clear` and compaction. The hook's
+     *    events are read every 0.5 s, so for that long after a switch this still names the
+     *    previous conversation. Null when the configured command passes its own `--settings`
+     *    (Prism cannot add its hook then, so no switch would be reported), and, until the hook
+     *    reports, when this Claude does not accept `--session-id`.
+     *  - **Codex**: the thread whose id the terminal title shows, completed against Codex's own
+     *    ids. Null until that completion is unambiguous, and for a Codex older than 0.159.0 or one
+     *    whose arguments choose their own title items. The transcript path is null until Codex
+     *    creates the rollout file (at the first turn), and after a `thread/revert` it can name
+     *    the previous rollout file for up to 30 s.
      */
     @Volatile var identity: SessionIdentity? = null
 

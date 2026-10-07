@@ -21,7 +21,7 @@ data class TabTitle(val label: String, val name: String?)
  *  - **Identity.** Follows the strategy's identity events (Claude's hook) and the id the title
  *    carries (Codex): a title whose id disagrees with the known identity clears it, and it is
  *    resolved again off the terminal thread. It is stored on the attached [AgentSession], for
- *    other features to read. A resolved identity is resolved again every [RECHECK_TICKS] slow
+ *    other features to read; see [AgentSession.identity] for how current it is. A resolved identity is resolved again every [RECHECK_TICKS] slow
  *    ticks, since its transcript can change under the same id (Codex's `thread/revert`).
  *  - **Full name.** While the title shows a name the CLI may have cut off, the full name is read
  *    from the CLI's store every [slowTickMs], independently of title events: Codex writes no new
