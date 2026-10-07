@@ -5,6 +5,18 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 O formato é baseado no [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Adicionado
+
+- **Nomes de sessão nas abas de chat**: cada aba de chat mostra o nome da sua conversa em vez de `Chat #1`. O Prism lê o nome do arquivo de sessão no disco e atualiza a aba enquanto o chat está em execução.
+  - Em uma sessão do Claude, o Prism usa o título que o Claude registra. Um título definido por você prevalece sobre um título gerado pelo Claude. O Prism inicia cada sessão do Claude com a opção `--session-id`, para identificar o arquivo de sessão de cada chat. Se os argumentos configurados do Claude já selecionam uma conversa (`--continue`, `--resume` ou `--session-id`), o Prism não adiciona a opção.
+  - O Codex não registra um título, então, em uma sessão do Codex, o Prism usa a primeira mensagem do usuário. É o mesmo rótulo que o seletor `/resume` do Codex mostra.
+  - Se nenhum nome estiver disponível, a aba mantém seu número. O Prism corta um nome longo em um limite de palavra. A dica da aba mostra o nome completo e o nome do agente. Uma aba mantém seu número enquanto mostra um nome, então uma nova aba não repete o número de uma aba aberta.
+  - Cada agente fornece nomes por meio de sua própria fonte. Cada fonte faz uma única leitura limitada do final de um arquivo de sessão candidato. A leitura identifica a conversa e fornece o título. Uma classificação impede que um nome melhor perca para um nome pior.
+  - O Prism agora encontra a aba de histórico de conversas por uma chave, e não pelo nome exibido, porque agora um chat pode se chamar `History`.
+- **Marcas de agente nas abas**: cada aba de chat, o seletor New Session e as entradas de nova sessão do menu Split mostram uma marca para o agente. As marcas são formas simples nas cores do Prism. Não são logotipos dos fornecedores.
+
 ## [1.4.0] — 2026-10-03
 
 ### Adicionado

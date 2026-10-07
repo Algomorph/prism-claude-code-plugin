@@ -5,6 +5,18 @@ Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 y este proyecto sigue el [Versionado Semántico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Añadido
+
+- **Nombres de sesión en las pestañas de chat**: cada pestaña de chat muestra el nombre de su conversación en lugar de `Chat #1`. Prism lee el nombre del archivo de sesión en el disco y actualiza la pestaña mientras el chat está en ejecución.
+  - En una sesión de Claude, Prism usa el título que Claude registra. Un título que defines tú prevalece sobre un título que genera Claude. Prism inicia cada sesión de Claude con la opción `--session-id`, para identificar el archivo de sesión de cada chat. Si los argumentos configurados de Claude ya seleccionan una conversación (`--continue`, `--resume` o `--session-id`), Prism no añade la opción.
+  - Codex no registra un título, así que, en una sesión de Codex, Prism usa el primer mensaje del usuario. Es la misma etiqueta que muestra el selector `/resume` de Codex.
+  - Si no hay ningún nombre disponible, la pestaña conserva su número. Prism recorta un nombre largo en un límite de palabra. La descripción emergente muestra el nombre completo y el nombre del agente. Una pestaña conserva su número mientras muestra un nombre, así que una pestaña nueva no repite el número de una pestaña abierta.
+  - Cada agente proporciona nombres mediante su propia fuente. Cada fuente hace una única lectura limitada del final de un archivo de sesión candidato. La lectura identifica la conversación y proporciona el título. Una clasificación impide que un nombre mejor pierda frente a uno peor.
+  - Prism ahora encuentra la pestaña del historial de conversaciones por una clave en lugar de por su nombre visible, porque ahora un chat puede llamarse `History`.
+- **Marcas de agente en las pestañas**: cada pestaña de chat, el selector New Session y las entradas de nueva sesión del menú Split muestran una marca para el agente. Las marcas son formas simples en los colores de Prism. No son logotipos de los proveedores.
+
 ## [1.4.0] — 2026-10-03
 
 ### Añadido

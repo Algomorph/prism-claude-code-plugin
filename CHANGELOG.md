@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Session names on chat tabs**: each chat tab shows the name of its conversation instead of `Chat #1`. Prism reads the name from the session file on disk, and it updates the tab while the chat runs.
+  - For a Claude session, Prism uses the title that Claude records. A title that you set wins over a title that Claude generates. Prism starts each Claude session with the `--session-id` option, so that it can identify the session file of each chat. If the configured Claude arguments already select a conversation (`--continue`, `--resume`, or `--session-id`), Prism does not add the option.
+  - Codex records no title, so for a Codex session Prism uses the first user message. This is the same label that the Codex `/resume` picker shows.
+  - If no name is available, the tab keeps its number. Prism clips a long name at a word boundary. The tooltip shows the full name and the name of the agent. A tab keeps its number while it shows a name, so a new tab does not repeat the number of an open tab.
+  - Each agent supplies names through its own source. Each source does one bounded tail read of a candidate session file. The read identifies the conversation and supplies the title. A rank keeps a better name from losing to a worse name.
+  - Prism now finds the Conversation History tab by a key instead of by its display name, because a chat can now use the name `History`.
+- **Agent marks on tabs**: each chat tab, the New Session picker, and the new-session entries of the Split menu show a mark for the agent. The marks are simple shapes in the Prism colors. They are not vendor logos.
+
 ## [1.4.0] — 2026-10-03
 
 ### Added

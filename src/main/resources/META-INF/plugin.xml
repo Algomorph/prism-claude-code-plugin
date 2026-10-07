@@ -50,6 +50,10 @@
     ]]></description>
 
     <change-notes><![CDATA[
+    <h2>Unreleased — Named Chat Tabs</h2>
+    <ul>
+        <li>New: <strong>named chat tabs</strong> — a tab takes its conversation's own title instead of <code>Chat #1</code> (Claude's recorded title, or the first message for Codex) and carries a mark for the agent running in it; the tooltip has the full title.</li>
+    </ul>
     <h2>v1.4.0 — Split Sessions &amp; Terminal Settings</h2>
     <ul>
         <li>New: changelog viewer beside Prism settings, with Markdown formatting and offline English, Brazilian Portuguese, and Spanish history</li>
