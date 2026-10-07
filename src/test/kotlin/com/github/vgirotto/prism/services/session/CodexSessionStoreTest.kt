@@ -73,6 +73,52 @@ class CodexSessionStoreTest {
         assertNull(store.complete(prefix))
     }
 
+    private fun reverted(day: String, time: String, id: String, rolloutId: String): File =
+        home.resolve("sessions/$day/rollout-${day.replace('/', '-')}T$time-${id}_$rolloutId.jsonl").toFile()
+            .apply { parentFile.mkdirs(); writeText("{}\n") }
+
+    @Test
+    fun `rollout names in both formats are read, with the thread id first`() {
+        val rolloutId = "01a0ff00-0000-7000-8000-000000000009"
+        assertEquals(
+            RolloutName("2026-09-29T11-13-18", id, id),
+            RolloutName.parse("rollout-2026-09-29T11-13-18-$id.jsonl"),
+        )
+        assertEquals(
+            RolloutName("2026-10-02T08-00-00", id, rolloutId),
+            RolloutName.parse("rollout-2026-10-02T08-00-00-${id}_$rolloutId.jsonl"),
+        )
+        for (bad in listOf(
+            "rollout-2026-09-29T11-13-18-$id.jsonl.zst", "rollout-$id.jsonl", "notes-2026-09-29T11-13-18-$id.jsonl",
+            "rollout-2026-09-29T11-13-18-${id}_.jsonl", "rollout-2026-09-29T11-13-18-${id}_short.jsonl",
+        )) {
+            assertNull(RolloutName.parse(bad), bad)
+        }
+    }
+
+    @Test
+    fun `a reverted thread resolves to its newest rollout, filed under the day of the revert`() {
+        rollout("2026/09/29", id)
+        val revert = reverted("2026/10/02", "08-00-00", id, "01a0ff00-0000-7000-8000-000000000009")
+        assertEquals(SessionIdentity(id, revert.path), store.complete(prefix))
+        assertEquals(revert.toPath(), store.rolloutFor(id))
+    }
+
+    @Test
+    fun `rollouts of the same second are ordered by rollout id`() {
+        reverted("2026/09/30", "08-00-00", id, "01a0ff00-0000-7000-8000-000000000001")
+        val later = reverted("2026/09/30", "08-00-00", id, "01a0ff00-0000-7000-8000-000000000002")
+        assertEquals(later.toPath(), store.rolloutFor(id))
+    }
+
+    @Test
+    fun `another thread's rollout id is not taken for a thread id`() {
+        val file = rollout("2026/09/29", id)
+        // Another thread, reverted: its rollout id, last in the name, starts like this thread's id.
+        reverted("2026/09/30", "08-00-00", "01a0eeee-0000-7000-8000-000000000000", id)
+        assertEquals(SessionIdentity(id, file.path), store.complete(prefix))
+    }
+
     @Test
     fun `a whole id is taken as is`() {
         assertEquals(SessionIdentity(id, null), store.complete(IdHint(id, isPrefix = false)))

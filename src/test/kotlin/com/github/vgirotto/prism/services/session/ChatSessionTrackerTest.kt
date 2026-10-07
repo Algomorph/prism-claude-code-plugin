@@ -290,6 +290,24 @@ class ChatSessionTrackerTest {
     }
 
     @Test
+    fun `a resolved identity is checked again, and follows a revert to a new transcript`() {
+        val strategy = codexStrategy()
+        val tracker = tracker(strategy)
+        val session = session()
+        tracker.attach(session)
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
+        assertEquals(SessionIdentity(idA, "/r/$idA.jsonl"), session.identity)
+
+        // thread/revert: same thread id, so the same title, but a new rollout file.
+        strategy.ids[idA] = SessionIdentity(idA, "/r/${idA}_reverted.jsonl")
+        val calls = strategy.resolveCalls
+        repeat(ChatSessionTracker.RECHECK_TICKS - 1) { tracker.slowTick() }
+        assertEquals(calls, strategy.resolveCalls)
+        tracker.slowTick()
+        assertEquals(SessionIdentity(idA, "/r/${idA}_reverted.jsonl"), session.identity)
+    }
+
+    @Test
     fun `an ambiguous prefix leaves the identity unknown but the name correct`() {
         val strategy = FakeStrategy(CodexTitleParser::parse).apply {
             ids[idA] = SessionIdentity(idA, null)

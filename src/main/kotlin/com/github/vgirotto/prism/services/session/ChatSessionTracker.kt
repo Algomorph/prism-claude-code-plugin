@@ -21,7 +21,8 @@ data class TabTitle(val label: String, val name: String?)
  *  - **Identity.** Follows the strategy's identity events (Claude's hook) and the id the title
  *    carries (Codex): a title whose id disagrees with the known identity clears it, and it is
  *    resolved again off the terminal thread. It is stored on the attached [AgentSession], for
- *    other features to read.
+ *    other features to read. A resolved identity is resolved again every [RECHECK_TICKS] slow
+ *    ticks, since its transcript can change under the same id (Codex's `thread/revert`).
  *  - **Full name.** While the title shows a name the CLI may have cut off, the full name is read
  *    from the CLI's store every [slowTickMs], independently of title events: Codex writes no new
  *    title when only the hidden end of a long name changes. The strategy takes a stored name only
@@ -64,6 +65,7 @@ class ChatSessionTracker(
     private var shown: TabTitle? = null
     /** Bumped whenever a title invalidates the identity, so a stale resolution is dropped. */
     private var generation = 0
+    private var slowTicks = 0
 
     /** The session this tab shows, when known. */
     val identity: SessionIdentity?
@@ -128,16 +130,19 @@ class ChatSessionTracker(
     /**
      * Retries an identity the title's id hint has not fully resolved, and refreshes a cut-off
      * name. Unresolved includes a known id without a transcript path: a Codex thread renamed
-     * before its first turn has no rollout file until that turn starts.
+     * before its first turn has no rollout file until that turn starts. A resolved identity is
+     * checked again every [RECHECK_TICKS] ticks: `thread/revert` moves a Codex thread to a new
+     * rollout file, and the title, which shows only the thread id, does not change.
      */
     fun slowTick() {
-        val unresolved = synchronized(lock) {
+        val target = synchronized(lock) {
             val hint = reading?.idHint
             val known = currentIdentity()
             val incomplete = known == null || known.transcriptPath == null
-            if (!disposed && hint != null && incomplete) hint to generation else null
+            val recheck = ++slowTicks % RECHECK_TICKS == 0
+            if (!disposed && hint != null && (incomplete || recheck)) hint to generation else null
         }
-        if (unresolved != null) resolve(unresolved.first, unresolved.second) else refreshFullName()
+        if (target != null) resolve(target.first, target.second) else refreshFullName()
     }
 
     private fun resolve(hint: IdHint, gen: Int) {
@@ -194,6 +199,11 @@ class ChatSessionTracker(
             cancels.toList().also { cancels.clear() }
         }
         toCancel.forEach { it() }
+    }
+
+    companion object {
+        /** Slow ticks between checks of a resolved identity (30 s at the default tick). */
+        const val RECHECK_TICKS = 15
     }
 
     /** The IDE's UI thread, pooled threads and scheduled executor. */
