@@ -75,6 +75,16 @@ class ClaudeSessionHookTest {
     }
 
     @Test
+    fun `an event line too long to be an event is skipped`() {
+        val file = dir.resolve("events.jsonl").toFile()
+        val reader = ClaudeHookEventReader(file.toPath())
+        file.writeText(event("huge", "startup", transcript = "/" + "x".repeat(AppendedLines.DEFAULT_MAX_LINE_BYTES)))
+        assertNull(reader.poll())
+        file.appendText("\n" + event("next", "clear") + "\n")
+        assertEquals("next", reader.poll()?.sessionId)
+    }
+
+    @Test
     fun `a missing transcript path leaves it unknown`() {
         val file = File(dir.toFile(), "events.jsonl")
         file.writeText("""{"session_id":"s","source":"startup"}""" + "\n")

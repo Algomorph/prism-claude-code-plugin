@@ -4,7 +4,6 @@ import com.github.vgirotto.prism.services.shellQuote
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import java.io.RandomAccessFile
 import java.nio.file.Path
 
 /**
@@ -47,32 +46,18 @@ object ClaudeSessionHook {
 
 /**
  * Follows a tab's Claude hook events file. Each complete line is one session switch; the newest
- * one is the session the tab shows now. A partial last line is left for the next [poll].
+ * one is the session the tab shows now. A partial last line is left for the next [poll], and the
+ * file is read with bounded memory (see [AppendedLines]).
  */
-class ClaudeHookEventReader(private val file: Path) : IdentityEventSource {
+class ClaudeHookEventReader(file: Path) : IdentityEventSource {
 
-    private var offset = 0L
+    private val lines = AppendedLines(file)
 
     @Synchronized
     override fun poll(): SessionIdentity? {
-        val bytes = try {
-            RandomAccessFile(file.toFile(), "r").use { raf ->
-                val length = raf.length()
-                if (length < offset) offset = 0
-                if (length == offset) return null
-                raf.seek(offset)
-                ByteArray((length - offset).toInt()).also { raf.readFully(it) }
-            }
-        } catch (_: Exception) {
-            return null // Not written yet: Claude has not started.
-        }
-        val complete = bytes.lastIndexOf('\n'.code.toByte())
-        if (complete < 0) return null
-        offset += complete + 1
-        return String(bytes, 0, complete + 1, Charsets.UTF_8)
-            .lineSequence()
-            .mapNotNull(::identityIn)
-            .lastOrNull()
+        var latest: SessionIdentity? = null
+        lines.read { line -> identityIn(line)?.let { latest = it } }
+        return latest
     }
 
     private fun identityIn(line: String): SessionIdentity? {

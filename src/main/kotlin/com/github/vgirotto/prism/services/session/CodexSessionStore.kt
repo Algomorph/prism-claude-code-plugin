@@ -2,7 +2,6 @@ package com.github.vgirotto.prism.services.session
 
 import com.google.gson.JsonParser
 import java.io.File
-import java.io.RandomAccessFile
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Instant
@@ -20,15 +19,16 @@ import java.time.format.DateTimeFormatter
  * Thread ids are UUIDv7, so the first 48 bits of an id are its creation time in UTC milliseconds.
  * That is what lets [complete] look for a thread in three day directories instead of the tree.
  *
- * The index is read incrementally, from where the previous read stopped; a partial last line is
- * left for the next read. Thread-safe.
+ * The index is read incrementally, from where the previous read stopped, with bounded memory (see
+ * [AppendedLines]); a partial last line is left for the next read. Only the names of the
+ * [MAX_NAMES] threads named most recently are kept. Thread-safe.
  */
 class CodexSessionStore(private val home: Path) {
 
-    private val indexFile: File get() = home.resolve(INDEX_FILE).toFile()
+    private val index = AppendedLines(home.resolve(INDEX_FILE))
 
-    private var indexOffset = 0L
-    private val names = HashMap<String, String>()
+    /** Thread names by id, the most recently named last; at most [MAX_NAMES] of them. */
+    private val names = LinkedHashMap<String, String>()
 
     /** The current name of thread [id], from the index; null if it has none. */
     @Synchronized
@@ -81,26 +81,7 @@ class CodexSessionStore(private val home: Path) {
 
     /** Reads what was appended to the index since the last call. */
     private fun refreshIndex() {
-        val file = indexFile
-        val length = file.length()
-        if (length < indexOffset) {
-            // Replaced or truncated: start over.
-            indexOffset = 0
-            names.clear()
-        }
-        if (length == indexOffset) return
-        val bytes = try {
-            RandomAccessFile(file, "r").use { raf ->
-                raf.seek(indexOffset)
-                ByteArray((raf.length() - indexOffset).toInt().coerceAtLeast(0)).also { raf.readFully(it) }
-            }
-        } catch (_: Exception) {
-            return
-        }
-        val complete = bytes.lastIndexOf('\n'.code.toByte())
-        if (complete < 0) return
-        indexOffset += complete + 1
-        String(bytes, 0, complete + 1, Charsets.UTF_8).lineSequence().forEach(::readIndexLine)
+        index.read(onReset = names::clear, onLine = ::readIndexLine)
     }
 
     private fun readIndexLine(line: String) {
@@ -109,7 +90,11 @@ class CodexSessionStore(private val home: Path) {
             val record = JsonParser.parseString(line).asJsonObject
             val id = record.get("id")?.takeIf { it.isJsonPrimitive }?.asString ?: return
             val name = record.get("thread_name")?.takeIf { it.isJsonPrimitive }?.asString?.trim()
-            if (name.isNullOrEmpty()) names.remove(id) else names[id] = name
+            // Removed first, so a renamed thread moves to the end, past the ones dropped first.
+            names.remove(id)
+            if (name.isNullOrEmpty()) return
+            names[id] = name
+            if (names.size > MAX_NAMES) names.remove(names.keys.first())
         } catch (_: Exception) {
             // A malformed line says nothing about any thread.
         }
@@ -118,6 +103,12 @@ class CodexSessionStore(private val home: Path) {
     companion object {
         const val INDEX_FILE = "session_index.jsonl"
         const val SESSIONS_DIR = "sessions"
+
+        /**
+         * How many thread names are kept. A tab needs the name of the thread it shows, which Codex
+         * names (or renames) last; the index holds every thread the user ever had.
+         */
+        const val MAX_NAMES = 2_000
         private const val ROLLOUT_PREFIX = "rollout-"
         private const val ROLLOUT_SUFFIX = ".jsonl"
         private const val ID_LENGTH = 36

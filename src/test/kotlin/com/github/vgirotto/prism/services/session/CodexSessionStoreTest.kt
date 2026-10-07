@@ -107,6 +107,25 @@ class CodexSessionStoreTest {
     }
 
     @Test
+    fun `only the most recently named threads are kept`() {
+        val first = "01a0edbb-4501-7591-82b7-000000000000"
+        val renamed = "01a0edbb-4501-7591-82b7-000000000001"
+        index.writeText(record(first, "First") + record(renamed, "Before"))
+        val others = (2..CodexSessionStore.MAX_NAMES).joinToString("") { record("other-$it", "Other $it") }
+        index.appendText(others + record(renamed, "After"))
+        assertNull(store.threadName(first))
+        assertEquals("After", store.threadName(renamed))
+        assertEquals("Other 2", store.threadName("other-2"))
+    }
+
+    @Test
+    fun `an index line too long to be a record is skipped`() {
+        index.writeText(record("other", "x".repeat(AppendedLines.DEFAULT_MAX_LINE_BYTES)) + record(id, "Fine"))
+        assertNull(store.threadName("other"))
+        assertEquals("Fine", store.threadName(id))
+    }
+
+    @Test
     fun `malformed lines and a missing index are ignored`() {
         assertNull(store.threadName(id))
         index.writeText("not json\n" + record(id, "Fine"))
