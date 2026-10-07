@@ -470,13 +470,16 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
     /**
      * Put [title] on the chat tab: the clipped name as the label, and the whole name plus the agent
-     * it belongs to as the tooltip. With no name, the tooltip is just the agent.
+     * it belongs to as the tooltip. With no name, the tooltip is just the agent. The name is the
+     * agent's text, so both show it literally (see [ChatTabText]).
      */
     private fun applyTabTitle(content: Content, cli: AgentCli, title: TabTitle) {
-        content.displayName = title.label
-        content.description = title.name
-            ?.let { PrismBundle.message("toolwindow.tab.tooltip", cli.displayName(), it) }
-            ?: cli.displayName()
+        content.displayName = ChatTabText.label(title.label)
+        content.description = ChatTabText.tooltip(
+            title.name
+                ?.let { PrismBundle.message("toolwindow.tab.tooltip", cli.displayName(), it) }
+                ?: cli.displayName()
+        )
     }
 
     private fun showHistoryTab(project: Project, toolWindow: ToolWindow) {
