@@ -126,6 +126,24 @@ class CodexSessionStoreTest {
     }
 
     @Test
+    fun `an index replaced at the same size forgets the names it no longer holds`() {
+        index.writeText(record(id, "Name A") + record("other", "Other"))
+        assertEquals("Name A", store.threadName(id))
+        index.writeText(record(id, "Name B") + record("thing", "Thing"))
+        assertEquals("Name B", store.threadName(id))
+        assertNull(store.threadName("other"))
+    }
+
+    @Test
+    fun `an index replaced by a larger one is read again from the start`() {
+        index.writeText(record(id, "Before"))
+        assertEquals("Before", store.threadName(id))
+        index.writeText(record("other", "Other, now first") + record(id, "After"))
+        assertEquals("After", store.threadName(id))
+        assertEquals("Other, now first", store.threadName("other"))
+    }
+
+    @Test
     fun `malformed lines and a missing index are ignored`() {
         assertNull(store.threadName(id))
         index.writeText("not json\n" + record(id, "Fine"))

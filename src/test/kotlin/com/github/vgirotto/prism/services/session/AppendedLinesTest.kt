@@ -1,9 +1,13 @@
 package com.github.vgirotto.prism.services.session
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 
 class AppendedLinesTest {
 
@@ -70,6 +74,54 @@ class AppendedLinesTest {
         lines.read(onReset = { resets++ }) { read += it }
         assertEquals(1, resets)
         assertEquals(listOf("b"), read)
+    }
+
+    private fun AppendedLines.readCountingResets(): Pair<Int, List<String>> {
+        var resets = 0
+        val read = mutableListOf<String>()
+        read(onReset = { resets++ }) { read += it }
+        return resets to read
+    }
+
+    @Test
+    fun `appending is not taken for a replacement`() {
+        val lines = AppendedLines(path)
+        file.writeText("one\n")
+        lines.lines()
+        file.appendText("two\n")
+        assertEquals(0 to listOf("two"), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a file rewritten in place at the same size is read again from the start`() {
+        val lines = AppendedLines(path)
+        file.writeText("{\"id\":\"a\",\"thread_name\":\"Old\"}\n")
+        lines.lines()
+        file.writeText("{\"id\":\"a\",\"thread_name\":\"New\"}\n")
+        assertEquals(1 to listOf("{\"id\":\"a\",\"thread_name\":\"New\"}"), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a file rewritten in place larger is read again from the start`() {
+        val lines = AppendedLines(path)
+        file.writeText("old\n")
+        lines.lines()
+        file.writeText("new\nand more\n")
+        assertEquals(1 to listOf("new", "and more"), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a file moved over the old one is read again from the start, even when it only adds lines`() {
+        val lines = AppendedLines(path)
+        file.writeText("one\n")
+        lines.lines()
+        val replacement = dir.resolve("log.jsonl.tmp")
+        replacement.toFile().writeText("one\ntwo\n")
+        Files.move(replacement, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        assumeTrue(Files.readAttributes(path, BasicFileAttributes::class.java).fileKey() != null) {
+            "this file system has no file keys"
+        }
+        assertEquals(1 to listOf("one", "two"), lines.readCountingResets())
     }
 
     @Test
