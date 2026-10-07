@@ -202,11 +202,12 @@ class AgentProcessManager(private val project: Project) : Disposable {
                     // reports the real one, and every switch after it.
                     val sessionIdFlag =
                         if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
-                            if (session.identity == null) session.identity = SessionIdentity(session.id, null)
                             listOf("--session-id", session.id)
                         } else emptyList()
                     val base = resolvedCommand.copy(arguments = resolvedCommand.arguments + sessionIdFlag)
                     val launch = strategy.launchCommand(tabFiles, base)
+                    val provisional = launchIdentity(session.id, sessionIdFlag.isNotEmpty(), strategy)
+                    if (provisional != null && session.identity == null) session.identity = provisional
                     // `clear` runs after the shell echoes the line and before the agent paints,
                     // which hides the prompt without racing the agent's first paint.
                     val cmd = "clear; " + shellCommand(launch) + "\n"
@@ -605,6 +606,19 @@ internal fun codexSubmitChunks(text: String): List<String>? {
  */
 internal fun shellQuote(path: String): String =
     "'" + path.replace("'", "'\\''") + "'"
+
+/**
+ * The identity a session has from its launch, before the agent reports one: the `--session-id` it
+ * was launched with ([passesSessionId]), if [strategy] reports every switch after it. Otherwise
+ * null, and the identity stays unknown: the launch id would be wrong after the first switch.
+ * Call after [AgentSessionStrategy.launchCommand].
+ */
+internal fun launchIdentity(
+    sessionId: String,
+    passesSessionId: Boolean,
+    strategy: AgentSessionStrategy,
+): SessionIdentity? =
+    if (passesSessionId && strategy.reportsSwitches()) SessionIdentity(sessionId, null) else null
 
 /** Claude options that already pick the conversation a session opens. */
 private val CONVERSATION_SELECTING_ARGS = setOf("--session-id", "-c", "--continue", "-r", "--resume")

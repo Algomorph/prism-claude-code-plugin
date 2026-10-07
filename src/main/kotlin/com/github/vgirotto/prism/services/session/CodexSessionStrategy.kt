@@ -63,6 +63,9 @@ class CodexSessionStrategy(
     override fun parseTitle(title: String): TitleReading? =
         if (titleItemsSet) CodexTitleParser.parse(title) else null
 
+    /** Codex is launched with no identity: the title carries the thread id instead. */
+    override fun reportsSwitches(): Boolean = false
+
     override fun identityEvents(tab: TabSessionFiles): IdentityEventSource? = null
 
     override fun resolveIdentity(hint: IdHint): SessionIdentity? = store()?.complete(hint)

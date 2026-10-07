@@ -33,6 +33,7 @@ class ChatSessionTrackerTest {
         override fun launchCommand(tab: TabSessionFiles, command: ResolvedCliCommand) = command
         override fun launchEnvironment() = emptyMap<String, String?>()
         override fun parseTitle(title: String) = parser(title)
+        override fun reportsSwitches() = events != null
         override fun identityEvents(tab: TabSessionFiles) = events
         override fun resolveIdentity(hint: IdHint): SessionIdentity? {
             resolveCalls++
@@ -121,6 +122,46 @@ class ChatSessionTrackerTest {
         tracker.onApplicationTitleChanged("✳ Named chat")
         assertEquals(SessionIdentity("cleared", "/p/cleared.jsonl"), session.identity)
         assertEquals(listOf(TabTitle("Named chat", "Named chat")), shown)
+    }
+
+    @Test
+    fun `without the hook the identity stays unknown across switches, and the title still names the tab`() {
+        // The user's own --settings: no hook, so no launch identity and no events (see launchIdentity).
+        val events = IdentityEventSource { null }
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse).apply { this.events = events })
+        val session = session()
+        tracker.attach(session)
+
+        tracker.onApplicationTitleChanged("✳ First chat")
+        scheduler.tick()
+        tracker.onApplicationTitleChanged("✳ Resumed chat") // /resume
+        tracker.onApplicationTitleChanged("✳ Claude Code") // /clear
+        scheduler.tick()
+
+        assertNull(session.identity)
+        assertNull(tracker.identity)
+        assertEquals(
+            listOf(TabTitle("First chat", "First chat"), TabTitle("Resumed chat", "Resumed chat"), TabTitle("Chat #3", null)),
+            shown,
+        )
+    }
+
+    @Test
+    fun `with the hook a switch replaces the launch identity`() {
+        val events = ArrayDeque<SessionIdentity>()
+        val strategy = FakeStrategy(ClaudeTitleParser::parse).apply {
+            this.events = IdentityEventSource { events.removeLastOrNull().also { events.clear() } }
+        }
+        val tracker = tracker(strategy)
+        val session = session().apply { identity = SessionIdentity("launch", null) }
+        tracker.attach(session)
+
+        events += SessionIdentity("resumed", "/p/resumed.jsonl") // /resume
+        tracker.onApplicationTitleChanged("✳ Resumed chat")
+        assertEquals(SessionIdentity("resumed", "/p/resumed.jsonl"), session.identity)
+        events += SessionIdentity("cleared", "/p/cleared.jsonl") // /clear
+        scheduler.tick()
+        assertEquals(SessionIdentity("cleared", "/p/cleared.jsonl"), session.identity)
     }
 
     @Test

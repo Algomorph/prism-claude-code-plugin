@@ -40,6 +40,10 @@ class AgentSession(
     /**
      * The exact conversation this session shows, once known: the agent reports it on startup
      * and on every switch (`/resume`, `/clear`, `/new`). Null while unknown; never guessed.
+     *
+     * It stays null for a Claude session whose configured command passes its own `--settings`:
+     * Prism cannot add its hook then, so no switch is reported, and the `--session-id` it was
+     * launched with would be wrong after the first `/resume` or `/clear`.
      */
     @Volatile var identity: SessionIdentity? = null
 

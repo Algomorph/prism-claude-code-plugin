@@ -16,7 +16,8 @@ import java.nio.file.Path
  * break, to the tab's own events file, which [ClaudeHookEventReader] follows.
  *
  * Claude keeps only the last `--settings` it is given (checked: two flags are not merged), so a
- * user command that already passes one gets no hook; see [ClaudeSessionStrategy].
+ * user command that already passes one gets no hook, and its session stays unknown; see
+ * [ClaudeSessionStrategy].
  */
 object ClaudeSessionHook {
 

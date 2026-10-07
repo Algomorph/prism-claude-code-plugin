@@ -31,6 +31,14 @@ interface AgentSessionStrategy {
     /** What [title] says about the chat, or null if it is not a title this CLI writes. */
     fun parseTitle(title: String): TitleReading?
 
+    /**
+     * True when the command [launchCommand] last returned makes the CLI report every session
+     * switch through [identityEvents]. Only then does an identity fixed at launch (Claude's
+     * `--session-id`) stay true: without the reports, the first `/resume` or `/clear` would leave
+     * it naming a conversation the tab no longer shows.
+     */
+    fun reportsSwitches(): Boolean
+
     /** Identity changes the title does not show (Claude: hook events), or null if none. */
     fun identityEvents(tab: TabSessionFiles): IdentityEventSource?
 
