@@ -1,6 +1,6 @@
 package com.github.vgirotto.prism.services.session
 
-import java.text.BreakIterator
+import com.github.vgirotto.prism.services.graphemes
 
 /**
  * Reads the Codex terminal title Prism asks for with
@@ -102,20 +102,6 @@ object CodexTitleParser {
             return trimmed.substring(0, space).trim()
         }
         return trimmed
-    }
-
-    private fun graphemes(text: String): List<String> {
-        val it = BreakIterator.getCharacterInstance()
-        it.setText(text)
-        val out = ArrayList<String>()
-        var start = it.first()
-        var end = it.next()
-        while (end != BreakIterator.DONE) {
-            out += text.substring(start, end)
-            start = end
-            end = it.next()
-        }
-        return out
     }
 
     /** `is_disallowed_terminal_title_char` in codex-rs/tui/src/terminal_title.rs. */
