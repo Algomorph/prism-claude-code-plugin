@@ -158,7 +158,11 @@ class AgentSessionStrategyTest {
         val launch = strategy.launchCommand(tab, ResolvedCliCommand(fake.path, listOf("--model", "o 3")))
         runTyped(launch, work, mapOf("CODEX_HOME" to "custom home"))
 
-        assertEquals("$custom\n", tab.codexHome.toFile().readText())
+        // The shell resolves the relative home against its physical working directory, which can
+        // name the same directory another way (macOS: /private/var for /var).
+        val reported = tab.codexHome.toFile().readText()
+        assertTrue(reported.endsWith("\n"))
+        assertEquals(custom.toRealPath(), Path.of(reported.removeSuffix("\n")).toRealPath())
         assertEquals(
             listOf("custom home", "--model", "o 3", "-c", CodexSessionStrategy.TITLE_OVERRIDE),
             dir.resolve("ran").toFile().readLines(),
@@ -174,7 +178,12 @@ class AgentSessionStrategyTest {
     fun `without CODEX_HOME the shell reports the home directory's codex folder`() {
         val home = dir.resolve("home")
         val strategy = codexStrategy(store = null)
-        val launch = strategy.launchCommand(tab, ResolvedCliCommand("/bin/true", emptyList()))
+        // A stand-in for Codex that does nothing: `true` is not at the same path on every system.
+        val fake = dir.resolve("codex").toFile().apply {
+            writeText("#!/bin/sh\nexit 0\n")
+            setExecutable(true)
+        }
+        val launch = strategy.launchCommand(tab, ResolvedCliCommand(fake.path, emptyList()))
         runTyped(launch, dir, mapOf("CODEX_HOME" to "", "HOME" to home.toString()))
         assertEquals("${home.resolve(".codex")}\n", tab.codexHome.toFile().readText())
     }
