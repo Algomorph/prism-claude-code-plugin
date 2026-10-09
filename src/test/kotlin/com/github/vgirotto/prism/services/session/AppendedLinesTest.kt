@@ -8,6 +8,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.FileTime
+import java.time.Duration
+import java.time.Instant
 
 class AppendedLinesTest {
 
@@ -108,6 +111,33 @@ class AppendedLinesTest {
         lines.lines()
         file.writeText("new\nand more\n")
         assertEquals(1 to listOf("new", "and more"), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a rewrite of an earlier line that keeps the last line is read again from the start`() {
+        val lines = AppendedLines(path)
+        val last = "a last line, longer than any check of the bytes just before the read position\n"
+        file.writeText("Before\n$last")
+        lines.lines()
+        file.writeText("After!\n$last")
+        assertEquals(1 to listOf("After!", last.trim()), lines.readCountingResets())
+        file.writeText("After!\n${last}appended\n")
+        assertEquals(0 to listOf("appended"), lines.readCountingResets())
+        file.writeText("Later, longer\n${last}appended\nand more\n")
+        assertEquals(1 to listOf("Later, longer", last.trim(), "appended", "and more"), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a same-size rewrite long after the last change is noticed by its modification time`() {
+        val lines = AppendedLines(path)
+        val anHourAgo = FileTime.from(Instant.now().minus(Duration.ofHours(1)))
+        file.writeText("one\ntwo\n")
+        Files.setLastModifiedTime(path, anHourAgo)
+        lines.lines()
+        assertEquals(0 to emptyList<String>(), lines.readCountingResets())
+        file.writeText("ONE\ntwo\n")
+        Files.setLastModifiedTime(path, FileTime.from(anHourAgo.toInstant().plusSeconds(1)))
+        assertEquals(1 to listOf("ONE", "two"), lines.readCountingResets())
     }
 
     @Test

@@ -190,6 +190,19 @@ class CodexSessionStoreTest {
     }
 
     @Test
+    fun `an index rewritten in place under an unchanged last record is read again from the start`() {
+        val last = record("unrelated-thread", "A final record longer than sixty-four bytes in all")
+        index.writeText(record(id, "Before") + last)
+        assertEquals("Before", store.threadName(id))
+        index.writeText(record(id, "After!") + last)
+        assertEquals("After!", store.threadName(id))
+        index.writeText(record(id, "Later, longer") + last + record("other", "Other"))
+        assertEquals("Later, longer", store.threadName(id))
+        index.appendText(record(id, "New entry"))
+        assertEquals("New entry", store.threadName(id))
+    }
+
+    @Test
     fun `malformed lines and a missing index are ignored`() {
         assertNull(store.threadName(id))
         index.writeText("not json\n" + record(id, "Fine"))
