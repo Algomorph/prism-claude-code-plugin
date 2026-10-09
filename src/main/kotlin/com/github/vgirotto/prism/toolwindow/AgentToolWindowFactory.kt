@@ -99,6 +99,9 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
          * collision-proof regardless of how many times that happens. The number is read from
          * [CHAT_NUMBER_KEY], not parsed from the tab's name, since a named chat no longer shows it.
          */
+        /** Whether [content] is a chat tab, from the moment it is created, before its session starts. */
+        fun isChat(content: Content): Boolean = content.getUserData(CHAT_NUMBER_KEY) != null
+
         fun nextChatNumber(toolWindow: ToolWindow): Int {
             val highest = toolWindow.contentManager.contentsRecursively
                 .mapNotNull { it.getUserData(CHAT_NUMBER_KEY) }
@@ -529,13 +532,13 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         else AllIcons.Actions.SplitHorizontally,
     ) {
         override fun actionPerformed(e: AnActionEvent) {
-            val manager = resolveActionManager(project, toolWindow, e)
+            val manager = resolveLayoutManager(project, toolWindow, e)
             val context = manager.selectedContent?.component ?: e.inputEvent?.component ?: return
             support.perform(direction, manager, context)
         }
 
         override fun update(e: AnActionEvent) {
-            val manager = resolveActionManager(project, toolWindow, e)
+            val manager = resolveLayoutManager(project, toolWindow, e)
             e.presentation.isEnabledAndVisible = support.isAvailable(direction) && manager.contentCount > 1
         }
 
@@ -552,7 +555,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         AllIcons.Actions.Collapseall,
     ) {
         override fun actionPerformed(e: AnActionEvent) {
-            val manager = resolveActionManager(project, toolWindow, e)
+            val manager = resolveLayoutManager(project, toolWindow, e)
             val context = manager.selectedContent?.component ?: e.inputEvent?.component ?: return
             support.perform(SplitDirection.UNSPLIT, manager, context)
         }
@@ -609,6 +612,15 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
     }
+
+    /** The pane whose selected tab Move and Unsplit act on: the one holding focus, whatever tab that is. */
+    private fun resolveLayoutManager(
+        project: Project,
+        toolWindow: ToolWindow,
+        event: AnActionEvent,
+    ): ContentManager =
+        resolveFocusedContent(toolWindow)?.manager?.takeUnless { it.isDisposed }
+            ?: resolveActionManager(project, toolWindow, event)
 
     private fun resolveActionManager(
         project: Project,
