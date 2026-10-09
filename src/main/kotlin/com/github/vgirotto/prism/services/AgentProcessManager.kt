@@ -101,6 +101,9 @@ class AgentProcessManager(private val project: Project) : Disposable {
         sessions[sessionId]?.let { notifyStateListeners(it) }
     }
 
+    /** Tells the UI that [session]'s details (such as its name) changed, without making it active. */
+    fun sessionChanged(session: AgentSession) = notifyStateListeners(session)
+
     private fun notifyStateListeners(session: AgentSession) {
         ApplicationManager.getApplication().invokeLater {
             for (l in stateListeners) {

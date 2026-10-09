@@ -27,13 +27,18 @@ data class TabTitle(val label: String, val name: String?)
  *    from the CLI's store every [slowTickMs], independently of title events: Codex writes no new
  *    title when only the hidden end of a long name changes. The strategy takes a stored name only
  *    when the CLI would show it as the visible text; it changes the tooltip, never the label.
+ *  - **Session name.** The attached [AgentSession.name] is the whole name, or [placeholder] while
+ *    the chat has none, for what else shows the chat (the status bar, notifications, the next
+ *    interaction in Changes). [renamed] follows each change.
  *
- * Title events arrive on the terminal emulator thread; [show] runs on the UI thread, in order.
+ * Title events arrive on the terminal emulator thread; [show] and [renamed] run on the UI thread,
+ * in order.
  */
 class ChatSessionTracker(
     private val strategy: AgentSessionStrategy,
     private val placeholder: String,
     private val show: (TabTitle) -> Unit,
+    private val renamed: (AgentSession) -> Unit = {},
     private val scheduler: Scheduler = PlatformScheduler,
     private val fastTickMs: Long = 500,
     private val slowTickMs: Long = 2_000,
@@ -83,6 +88,7 @@ class ChatSessionTracker(
         synchronized(lock) {
             if (disposed) return
             this.session = session
+            syncSessionName()
             if (session.identity == null) session.identity = detachedIdentity
             detachedIdentity = null
             events = session.tabFiles?.let(strategy::identityEvents)
@@ -182,6 +188,16 @@ class ChatSessionTracker(
         if (title == shown) return
         shown = title
         scheduler.onUi { if (!disposed) show(title) }
+        syncSessionName()
+    }
+
+    /** Must hold [lock]. */
+    private fun syncSessionName() {
+        val attached = session ?: return
+        val name = shown?.name ?: placeholder
+        if (attached.name == name) return
+        attached.name = name
+        scheduler.onUi { if (!disposed) renamed(attached) }
     }
 
     /** Must hold [lock]. */

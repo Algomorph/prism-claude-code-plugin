@@ -50,11 +50,13 @@ class ChatSessionTrackerTest {
     @AfterEach
     fun disposeSessions() = sessions.forEach { it.dispose() }
 
+    private val renamed = mutableListOf<String>()
+
     private fun tracker(strategy: AgentSessionStrategy) =
-        ChatSessionTracker(strategy, "Chat #3", { shown += it }, scheduler)
+        ChatSessionTracker(strategy, "Chat #3", { shown += it }, { renamed += it.name }, scheduler)
 
     private fun session(): AgentSession =
-        AgentSession(cli = com.github.vgirotto.prism.model.AgentCli.CLAUDE).apply {
+        AgentSession(name = "Chat #3", cli = com.github.vgirotto.prism.model.AgentCli.CLAUDE).apply {
             tabFiles = TabSessionFiles(java.nio.file.Path.of("/nonexistent"))
             sessions += this
         }
@@ -391,6 +393,49 @@ class ChatSessionTrackerTest {
         tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
         scheduler.tick()
         assertEquals(TabTitle("Reply ok", "Reply ok"), shown.last())
+    }
+
+    // ── Session name ──
+
+    @Test
+    fun `the session takes each name and gets its placeholder back when there is none`() {
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse))
+        val session = session()
+        tracker.attach(session)
+        assertEquals(emptyList<String>(), renamed)
+
+        tracker.onApplicationTitleChanged("✳ Investigate renamed conversation")
+        assertEquals("Investigate renamed conversation", session.name)
+        tracker.onApplicationTitleChanged("✳ Claude Code")
+        assertEquals("Chat #3", session.name)
+        assertEquals(listOf("Investigate renamed conversation", "Chat #3"), renamed)
+    }
+
+    @Test
+    fun `a name shown before attach reaches the session when it attaches`() {
+        val tracker = tracker(FakeStrategy(ClaudeTitleParser::parse))
+        tracker.onApplicationTitleChanged("✳ Named early")
+        val session = session()
+        tracker.attach(session)
+        assertEquals("Named early", session.name)
+        assertEquals(listOf("Named early"), renamed)
+    }
+
+    @Test
+    fun `the session takes the full name behind a cut-off title, and its later changes`() {
+        val strategy = codexStrategy()
+        val head = "Investigate the flaky integration tests in th"
+        strategy.names[idA] = "${head}e payments service"
+        val tracker = tracker(strategy)
+        val session = session()
+        tracker.attach(session)
+        tracker.onApplicationTitleChanged(codexTitle(idA, "$head..."))
+        assertEquals("${head}e payments service", session.name)
+
+        strategy.names[idA] = "${head}e billing service"
+        scheduler.tick()
+        assertEquals("${head}e billing service", session.name)
+        assertEquals(listOf("$head...", "${head}e payments service", "${head}e billing service"), renamed)
     }
 
     @Test

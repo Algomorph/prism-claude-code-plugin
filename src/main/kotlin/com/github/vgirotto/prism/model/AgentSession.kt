@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class AgentSession(
     val id: String = UUID.randomUUID().toString(),
-    var name: String = "Chat",
+    /** What Prism calls this chat: its conversation's name, or its `Chat #N` placeholder. */
+    @Volatile var name: String = "Chat",
     val cli: AgentCli = AgentCli.DEFAULT,
 ) : Disposable {
 

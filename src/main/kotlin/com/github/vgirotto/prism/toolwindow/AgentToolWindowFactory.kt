@@ -415,6 +415,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 strategy,
                 placeholder = sessionName,
                 show = { title -> applyTabTitle(content, cli, title) },
+                renamed = { session -> AgentProcessManager.getInstance(project).sessionChanged(session) },
             )
             val terminal = terminalWidget.terminal
             terminal.addApplicationTitleListener(tracker)
