@@ -233,7 +233,7 @@ class DiffPanel(private val project: Project, private val onHistoryCleared: () -
             "$label$sessionSuffix"
         } else ""
         interactionLabel.toolTipText = if (diff.sessionNames.size > 1) {
-            PrismBundle.message("diff.multiple.chats.tooltip", diff.sessionNames.joinToString(", "))
+            ChatNameText.tooltip(PrismBundle.message("diff.multiple.chats.tooltip", diff.sessionNames.joinToString(", ")))
         } else null
     }
 

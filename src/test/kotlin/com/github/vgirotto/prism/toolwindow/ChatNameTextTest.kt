@@ -14,7 +14,7 @@ import javax.swing.text.html.HTMLDocument
 import javax.swing.text.html.HTMLEditorKit
 
 /** A chat name is the agent's text: the tab must show it, never render it. */
-class ChatTabTextTest {
+class ChatNameTextTest {
 
     private val markup = listOf(
         "<html><b>bold</b>",
@@ -26,7 +26,7 @@ class ChatTabTextTest {
     @Test
     fun `a label that starts with html is not rendered as HTML`() {
         for (name in markup) {
-            val label = ChatTabText.label(name)
+            val label = ChatNameText.label(name)
             assertFalse(BasicHTML.isHTMLString(label), name)
             assertNull(JLabel(label).getClientProperty(BasicHTML.propertyKey), name)
             assertTrue(label.endsWith(name), "the whole name stays visible: $name")
@@ -36,14 +36,14 @@ class ChatTabTextTest {
     @Test
     fun `a label without leading html is left as it is`() {
         for (name in listOf("Fix the <b> tag", "a < b > c", "Chat #3", "")) {
-            assertEquals(name, ChatTabText.label(name))
+            assertEquals(name, ChatNameText.label(name))
         }
     }
 
     @Test
     fun `a tooltip shows markup and image tags as text`() {
         for (name in markup + listOf("<img src='https://example.com/x.png'>", "Tom & Jerry <script>x</script>")) {
-            val document = render(ChatTabText.tooltip("Codex — $name"))
+            val document = render(ChatNameText.tooltip("Codex — $name"))
             assertEquals("Codex — $name", document.getText(0, document.length).trim(), name)
             assertFalse(hasElement(document, HTML.Tag.IMG), name)
             assertFalse(hasElement(document, HTML.Tag.A), name)
@@ -53,7 +53,18 @@ class ChatTabTextTest {
 
     @Test
     fun `a tooltip is HTML for every renderer, so the escapes never show`() {
-        assertTrue(BasicHTML.isHTMLString(ChatTabText.tooltip("Claude Code")))
+        assertTrue(BasicHTML.isHTMLString(ChatNameText.tooltip("Claude Code")))
+    }
+
+    @Test
+    fun `a notice that a chat ended shows its name as text`() {
+        for (name in markup + listOf("<img src='https://example.com/x.png'>", "Tom & Jerry")) {
+            val document = render(ChatNameText.sessionEndedNotice(name))
+            assertTrue(document.getText(0, document.length).contains("Session '$name' ended"), name)
+            assertFalse(hasElement(document, HTML.Tag.IMG), name)
+            assertFalse(hasElement(document, HTML.Tag.A), name)
+            assertFalse(hasElement(document, HTML.Tag.B), name)
+        }
     }
 
     private fun render(html: String): HTMLDocument {
