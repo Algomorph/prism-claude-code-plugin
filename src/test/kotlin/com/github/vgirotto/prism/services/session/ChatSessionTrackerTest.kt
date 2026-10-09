@@ -200,8 +200,8 @@ class ChatSessionTrackerTest {
 
     private val idA = "01a0edbb-4501-7591-82b7-36c4c0a1b2c3"
     private val idB = "01a0edcc-0000-7000-8000-000000000001"
-    private fun codexTitle(id: String, name: String? = null) =
-        id.take(29) + "..." + (name?.let { " | $it" } ?: "")
+    private fun codexTitle(id: String, name: String? = null, spinner: String? = null) =
+        listOfNotNull(id.take(29) + "...", name).joinToString(" | ") { item -> spinner?.let { "$item $it" } ?: item }
 
     private fun codexStrategy() = FakeStrategy(CodexTitleParser::parse).apply {
         ids[idA] = SessionIdentity(idA, "/r/$idA.jsonl")
@@ -253,8 +253,8 @@ class ChatSessionTrackerTest {
         val strategy = codexStrategy()
         val tracker = tracker(strategy)
         tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok"))
-        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok ⠋"))
-        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok ⠙"))
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok", spinner = "⠋"))
+        tracker.onApplicationTitleChanged(codexTitle(idA, "Reply ok", spinner = "⠙"))
         assertEquals(1, shown.size)
         assertEquals(1, strategy.resolveCalls)
     }

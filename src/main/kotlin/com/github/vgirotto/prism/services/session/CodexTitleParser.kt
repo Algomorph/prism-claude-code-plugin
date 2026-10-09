@@ -15,8 +15,9 @@ import com.github.vgirotto.prism.services.graphemes
  * ```
  *  - Each item is cut to a grapheme budget, the last three of which become `...`: the thread id
  *    to [ID_MAX_GRAPHEMES], the name to [NAME_MAX_GRAPHEMES]. Items are joined with ` | `.
- *  - While a name is being generated, one spinner frame is appended to each item after a space
- *    (or stands alone for an item that has no value yet).
+ *  - While a name is being generated, a spinner frame is appended to each item after a space
+ *    (or stands alone for an item that has no value yet). The thread id never ends in one, so a
+ *    frame after the id is what tells the frame after the name apart from a name's own text.
  *  - When Codex waits for approval, it swaps in `[ ! ] Action Required | …`, which is not this
  *    shape and so produces no reading: the tab keeps its name until the normal title returns.
  *
@@ -38,7 +39,9 @@ object CodexTitleParser {
 
     fun parse(title: String): TitleReading? {
         val separator = title.indexOf(SEPARATOR)
-        val idItem = withoutSpinner(if (separator < 0) title else title.substring(0, separator))
+        val decoratedIdItem = (if (separator < 0) title else title.substring(0, separator)).trim()
+        val idItem = withoutSpinner(decoratedIdItem)
+        val generatingName = idItem != decoratedIdItem
         if (!ID_ITEM.matches(idItem)) return null
         val idValue = idItem.removeSuffix(ELLIPSIS)
         val idHint = IdHint(
@@ -47,7 +50,8 @@ object CodexTitleParser {
         )
         if (separator < 0) return TitleReading.Unnamed(idHint)
 
-        val name = withoutSpinner(title.substring(separator + SEPARATOR.length))
+        val decoratedName = title.substring(separator + SEPARATOR.length).trim()
+        val name = if (generatingName) withoutSpinner(decoratedName) else decoratedName
         // `<id> |` alone, or `<id> ⠋ | ⠋`: the name is on its way, not absent.
         if (name.isEmpty()) return null
         return TitleReading.Named(name, mayBeCutOff = name.endsWith(ELLIPSIS), idHint = idHint)
@@ -94,14 +98,11 @@ object CodexTitleParser {
         return out.toString()
     }
 
+    /** [item] without one trailing spinner frame, if it ends in one. */
     private fun withoutSpinner(item: String): String {
-        val trimmed = item.trim()
-        if (trimmed in SPINNER_FRAMES) return ""
-        val space = trimmed.lastIndexOf(' ')
-        if (space >= 0 && trimmed.substring(space + 1) in SPINNER_FRAMES) {
-            return trimmed.substring(0, space).trim()
-        }
-        return trimmed
+        if (item in SPINNER_FRAMES) return ""
+        val frame = SPINNER_FRAMES.firstOrNull { item.endsWith(" $it") } ?: return item
+        return item.removeSuffix(" $frame").trimEnd()
     }
 
     /** `is_disallowed_terminal_title_char` in codex-rs/tui/src/terminal_title.rs. */

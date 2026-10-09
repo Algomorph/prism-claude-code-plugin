@@ -138,8 +138,16 @@ class TitleParsersTest {
         }
 
         @Test
-        fun `a user name ending in a braille character keeps it unless it follows a space`() {
+        fun `a name ending in a spinner character keeps it when no name is being generated`() {
             assertEquals(Named("dots⠋", false, hint), parse("$idItem | dots⠋"))
+            assertEquals(Named("Debug ⠋", false, hint), parse("$idItem | Debug ⠋"))
+            assertEquals(Named("⠋", false, hint), parse("$idItem | ⠋"))
+        }
+
+        @Test
+        fun `only the frame Codex appended is removed from a name being generated`() {
+            assertEquals(Named("Debug ⠋", false, hint), parse("$idItem ⠙ | Debug ⠋ ⠙"))
+            assertEquals(Named("⠋", false, hint), parse("$idItem ⠙ | ⠋ ⠙"))
         }
 
         @Test
