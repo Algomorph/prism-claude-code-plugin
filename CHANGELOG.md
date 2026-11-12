@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The status bar, the notification that a session ended, and the next interaction in the Changes panel also use the name of the conversation. An interaction keeps the name that its chat had when the interaction started. A change of name does not make a chat the active chat.
   - Prism now finds the Conversation History tab by a key instead of by its display name, because a chat can now use the name `History`. The actions that open History, the Changes panel or a new split chat next to the current chat now find that chat when History or an error panel has focus, and while the chat is still starting.
 - **Agent marks on tabs**: each chat tab, the New Session picker, and the new-session entries of the Split menu show a mark for the agent. The marks are simple shapes in the Prism colors. They are not vendor logos.
+- **Chats come back after a restart**: when a project opens again, Prism opens its chats again in the same order, each with the same agent (Claude Code or Codex). Each chat also continues its conversation, with `--resume` for Claude and `codex resume` for Codex, so you do not have to find it with `/resume`.
+  - Two settings control this feature: **Persist LLM chat tabs on IDE restart** and **Persist LLM sessions on IDE restart**. Both are on by default. The second setting applies only when the first setting is on.
+  - Prism keeps the list of chats in the workspace file of the project, which is not shared through version control. Prism updates the list each time the IDE saves its state, and keeps the list current also when the settings are off.
+  - A chat continues its conversation only if Prism knows the conversation and its transcript file still exists. Otherwise, the chat starts a new conversation in the same position. If the configured arguments already select a conversation (for example, `--continue` for Claude), Prism does not add its own.
+  - Restored chats open in the main pane. Prism does not restore the split layout.
 
 ## [1.4.0] — 2026-10-03
 

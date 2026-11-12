@@ -159,6 +159,7 @@ On older IDEs, font settings are under **Settings → Editor → Color Scheme �
 
 Configure shell, **default agent**, **Claude path**, **Codex path**, language, exclusions, auto-start, and toggles.
 Snapshot exclusions accept comma-separated names or wildcard patterns, for example `node_modules`, `cmake-build-*`, or `**/generated`.
+**Persist LLM chat tabs on IDE restart** (on by default) reopens a project's chats in the same order, each on its agent. **Persist LLM sessions on IDE restart** (on by default, and available only while the first option is on) also resumes each chat's conversation, so you don't have to run `/resume` after a restart.
 
 <img src="docs/images/settings.png" width="60%" />
 

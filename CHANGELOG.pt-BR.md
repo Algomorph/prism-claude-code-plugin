@@ -17,6 +17,11 @@ e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0
   - A barra de status, a notificação de que uma sessão terminou e a próxima interação no painel Changes também usam o nome da conversa. Uma interação mantém o nome que o seu chat tinha quando a interação começou. Uma mudança de nome não torna um chat o chat ativo.
   - O Prism agora encontra a aba de histórico de conversas por uma chave, e não pelo nome exibido, porque agora um chat pode se chamar `History`. As ações que abrem o History, o painel Changes ou um novo chat dividido ao lado do chat atual agora encontram esse chat quando o History ou um painel de erro tem o foco, e enquanto o chat ainda está iniciando.
 - **Marcas de agente nas abas**: cada aba de chat, o seletor New Session e as entradas de nova sessão do menu Split mostram uma marca para o agente. As marcas são formas simples nas cores do Prism. Não são logotipos dos fornecedores.
+- **Os chats voltam após reiniciar**: quando um projeto abre novamente, o Prism abre novamente os seus chats na mesma ordem, cada um com o mesmo agente (Claude Code ou Codex). Cada chat também continua a sua conversa, com `--resume` para o Claude e `codex resume` para o Codex, então você não precisa procurá-la com `/resume`.
+  - Duas configurações controlam esse recurso: **Manter as abas de chat ao reiniciar a IDE** e **Manter as sessões ao reiniciar a IDE**. As duas vêm ativadas. A segunda configuração só se aplica quando a primeira está ativada.
+  - O Prism guarda a lista de chats no arquivo de workspace do projeto, que não é compartilhado pelo controle de versão. O Prism atualiza a lista cada vez que a IDE salva o seu estado, e mantém a lista atualizada também quando as configurações estão desativadas.
+  - Um chat só continua a sua conversa se o Prism conhece a conversa e o arquivo de transcrição dela ainda existe. Caso contrário, o chat inicia uma nova conversa na mesma posição. Se os argumentos configurados já selecionam uma conversa (por exemplo, `--continue` para o Claude), o Prism não adiciona a sua.
+  - Os chats restaurados abrem no painel principal. O Prism não restaura a divisão dos painéis.
 
 ## [1.4.0] — 2026-10-03
 

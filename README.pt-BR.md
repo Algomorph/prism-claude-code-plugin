@@ -159,6 +159,7 @@ Navegue por conversas anteriores com busca full-text. Retome qualquer sessão an
 
 Configure shell, **agente padrão**, **caminho do Claude**, **caminho do Codex**, idioma, exclusões, auto-start e toggles.
 Exclusões de snapshot aceitam nomes ou padrões curinga separados por vírgula, por exemplo `node_modules`, `cmake-build-*` ou `**/generated`.
+**Manter as abas de chat ao reiniciar a IDE** (ativada por padrão) reabre os chats do projeto na mesma ordem, cada um com o seu agente. **Manter as sessões ao reiniciar a IDE** (ativada por padrão, e disponível apenas com a primeira opção ativada) também retoma a conversa de cada chat, então você não precisa usar `/resume` após reiniciar.
 
 <img src="docs/images/settings.png" width="60%" />
 
