@@ -2,6 +2,7 @@ package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.AgentSession
+import com.github.vgirotto.prism.services.ResolvedCliCommand
 import com.github.vgirotto.prism.services.session.SessionIdentity
 import com.intellij.openapi.util.Key
 import com.intellij.ui.content.Content
@@ -137,6 +138,41 @@ class ChatTabsRecordTest {
         assertNull(ChatTabsRecord.resumeTarget(codex, sessionsEnabled = true) { true })
         val noTranscript = claude.copy(identity = SessionIdentity("c1", null))
         assertNull(ChatTabsRecord.resumeTarget(noTranscript, sessionsEnabled = true) { true })
+    }
+
+    @Test
+    fun `restored chats keep the recorded order, whichever agent resolved first`() {
+        val claude2 = ChatEntry(AgentCli.CLAUDE, "Chat #3")
+        val claudeCommand = ResolvedCliCommand("/bin/claude", emptyList())
+        val codexCommand = ResolvedCliCommand("/bin/codex", emptyList())
+
+        for (commands in listOf(
+            linkedMapOf(AgentCli.CODEX to codexCommand, AgentCli.CLAUDE to claudeCommand),
+            linkedMapOf(AgentCli.CLAUDE to claudeCommand, AgentCli.CODEX to codexCommand),
+        )) {
+            val restore = restoreSteps(listOf(claude, codex, claude2), commands) { it.identity }
+            assertEquals(
+                listOf(
+                    RestoreStep(claude, claudeCommand, claude.identity),
+                    RestoreStep(codex, codexCommand, null),
+                    RestoreStep(claude2, claudeCommand, null),
+                ),
+                restore.steps,
+            )
+            assertEquals(emptyList<AgentCli>(), restore.missing)
+        }
+    }
+
+    @Test
+    fun `chats on a missing agent are skipped and the agent is reported once`() {
+        val claudeCommand = ResolvedCliCommand("/bin/claude", emptyList())
+        val restore = restoreSteps(
+            listOf(codex, claude, codex.copy(name = "Chat #3")),
+            mapOf(AgentCli.CLAUDE to claudeCommand, AgentCli.CODEX to null),
+        ) { null }
+
+        assertEquals(listOf(RestoreStep(claude, claudeCommand, null)), restore.steps)
+        assertEquals(listOf(AgentCli.CODEX), restore.missing)
     }
 
     private fun entriesSaved(record: ChatTabsRecord): List<ChatEntry> =

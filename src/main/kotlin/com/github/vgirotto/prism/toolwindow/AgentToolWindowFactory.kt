@@ -5,11 +5,13 @@ import com.github.vgirotto.prism.icons.PrismIcons
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.services.AgentProcessManager
 import com.github.vgirotto.prism.services.AgentSettingsState
+import com.github.vgirotto.prism.services.ChatName
 import com.github.vgirotto.prism.services.ClaudeValidationService
 import com.github.vgirotto.prism.services.CodexValidationService
 import com.github.vgirotto.prism.services.FileSnapshotService
 import com.github.vgirotto.prism.services.ResolvedCliCommand
 import com.github.vgirotto.prism.services.session.ChatSessionTracker
+import com.github.vgirotto.prism.services.session.SessionIdentity
 import com.github.vgirotto.prism.services.session.TabTitle
 import com.github.vgirotto.prism.services.session.newSessionStrategy
 import com.intellij.icons.AllIcons
@@ -90,6 +92,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
          *  shows the agent's name for the chat instead. */
         val CHAT_NUMBER_KEY = Key.create<Int>("PrismChatNumber")
 
+        /** Whether [content] is a chat tab, from the moment it is created, before its session starts. */
+        fun isChat(content: Content): Boolean = content.getUserData(CHAT_NUMBER_KEY) != null
+
+        /** A chat's `Chat #N` placeholder, which a recorded chat with no name of its own holds. */
+        private val PLACEHOLDER_NAME = Regex("""Chat #\d+""")
+
         /**
          * Numbers the next tab from the highest chat number currently open in this tool window,
          * rather than a static counter. `canCloseContents="true"` (plugin.xml) makes the platform
@@ -99,9 +107,6 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
          * collision-proof regardless of how many times that happens. The number is read from
          * [CHAT_NUMBER_KEY], not parsed from the tab's name, since a named chat no longer shows it.
          */
-        /** Whether [content] is a chat tab, from the moment it is created, before its session starts. */
-        fun isChat(content: Content): Boolean = content.getUserData(CHAT_NUMBER_KEY) != null
-
         fun nextChatNumber(toolWindow: ToolWindow): Int {
             val highest = toolWindow.contentManager.contentsRecursively
                 .mapNotNull { it.getUserData(CHAT_NUMBER_KEY) }
@@ -232,9 +237,15 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
         Disposer.register(toolWindow.disposable) { chatRecord.freeze() }
 
-        // Create the first session tab. The global Diff content is split from it
-        // after the asynchronous CLI preflight finishes.
-        if (AgentSettingsState.getInstance().autoStartOnOpen) {
+        val settings = AgentSettingsState.getInstance()
+        val restorePlan = chatRecord.takeRestorePlan(
+            enabled = settings.persistChatTabs,
+            hasChats = toolWindow.contentManager.contentsRecursively.any(::isChat),
+        )
+        if (restorePlan != null) {
+            restoreChats(project, toolWindow, changesVisibleOnStartup, globalDiffHost, restorePlan)
+        } else if (settings.autoStartOnOpen) {
+            // The global Diff content is split from this tab after the asynchronous CLI preflight finishes.
             createSessionTab(project, toolWindow, changesVisibleOnStartup, globalDiffHost = globalDiffHost)
         }
     }
@@ -261,12 +272,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // Keep the resolved command, not just a yes/no: the session launches this
             // exact binary with the configured literal arguments.
             val preflightStartedAtNanos = System.nanoTime()
-            val resolvedCommand = when (cli) {
-                AgentCli.CLAUDE ->
-                    ClaudeValidationService.getInstance().getClaudeCommand(settings.claudePath)
-                AgentCli.CODEX ->
-                    CodexValidationService.getInstance().getCodexCommand(settings.codexPath)
-            }
+            val resolvedCommand = resolveCliCommand(cli, settings)
             val preflightMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - preflightStartedAtNanos)
             log.info(
                 "timing: ${cli.name.lowercase()} preflight resolve took $preflightMs ms" +
@@ -292,6 +298,52 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         }
     }
 
+    private fun resolveCliCommand(cli: AgentCli, settings: AgentSettingsState): ResolvedCliCommand? = when (cli) {
+        AgentCli.CLAUDE -> ClaudeValidationService.getInstance().getClaudeCommand(settings.claudePath)
+        AgentCli.CODEX -> CodexValidationService.getInstance().getCodexCommand(settings.codexPath)
+    }
+
+    /**
+     * Reopens the recorded chats [plan] in order in the main pane, each on its agent and, when
+     * sessions persist, on its conversation. Each agent is resolved once, and every tab is then
+     * built in one pass, so the order does not depend on which preflight finishes first.
+     */
+    private fun restoreChats(
+        project: Project,
+        toolWindow: ToolWindow,
+        changesVisible: Boolean,
+        globalDiffHost: GlobalDiffContentHost,
+        plan: List<ChatEntry>,
+    ) {
+        val record = ChatTabsRecord.getInstance(project)
+        val settings = AgentSettingsState.getInstance()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val restore = try {
+                val commands = plan.map { it.cli }.distinct().associateWith { resolveCliCommand(it, settings) }
+                val sessionsEnabled = settings.effectivePersistChatSessions
+                restoreSteps(plan, commands) { ChatTabsRecord.resumeTarget(it, sessionsEnabled) }
+            } catch (e: Exception) {
+                log.warn("Could not prepare the recorded chats", e)
+                null
+            }
+            ApplicationManager.getApplication().invokeLater {
+                try {
+                    if (restore == null || project.isDisposed || toolWindow.isDisposed) return@invokeLater
+                    restore.missing.forEach { showCliNotFoundError(project, toolWindow, it, null) }
+                    for (step in restore.steps) {
+                        buildSessionTab(
+                            project, toolWindow, changesVisible, step.entry.cli, step.command,
+                            toolWindow.contentManager, null, globalDiffHost, step.entry, step.resume,
+                        )
+                    }
+                    log.info("Restored ${restore.steps.size} chat(s), ${restore.steps.count { it.resume != null }} resumed")
+                } finally {
+                    record.restoreFinished()
+                }
+            }
+        }
+    }
+
     /**
      * Builds the tab UI (terminal, toolbar, diff panel) and starts the agent
      * session. Must run on the EDT; [createSessionTab] performs the off-EDT
@@ -306,6 +358,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         targetManager: ContentManager,
         splitRequest: SplitRequest?,
         globalDiffHost: GlobalDiffContentHost?,
+        restored: ChatEntry? = null,
+        resume: SessionIdentity? = null,
     ) {
         val disposable = Disposer.newDisposable("AgentSession")
         Disposer.register(toolWindow.disposable, disposable)
@@ -401,7 +455,8 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             )
             content.isCloseable = true
             content.putUserData(CHAT_NUMBER_KEY, chatNumber)
-            content.putUserData(CHAT_ENTRY_KEY, ChatEntry(cli, sessionName))
+            val resumedName = restored?.name?.takeIf { resume != null && !PLACEHOLDER_NAME.matches(it) }
+            content.putUserData(CHAT_ENTRY_KEY, ChatEntry(cli, resumedName ?: sessionName, resume))
             // Which agent is behind this tab, at a glance. Tool-window tabs hide content icons
             // unless asked to show them.
             content.icon = PrismIcons.forCli(cli)
@@ -436,6 +491,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             Disposer.register(disposable) { terminal.removeApplicationTitleListener(tracker) }
             Disposer.register(disposable, tracker)
 
+            resumedName?.let { applyTabTitle(content, cli, TabTitle(ChatName(it).display(), it)) }
             targetManager.addContent(content)
             targetManager.setSelectedContent(content)
 
@@ -447,7 +503,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
                     val pm = AgentProcessManager.getInstance(project)
-                    val result = pm.createSession(sessionName, cli, resolvedCommand, strategy)
+                    val result = pm.createSession(sessionName, cli, resolvedCommand, strategy, resume)
 
                     if (!binding.attach(result.sessionId)) {
                         pm.destroySession(result.sessionId)
