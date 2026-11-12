@@ -222,6 +222,16 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 .notify(project)
         }
 
+        val chatRecord = ChatTabsRecord.getInstance(project)
+        chatRecord.attach {
+            if (project.isDisposed || toolWindow.isDisposed) null
+            else ChatTabsRecord.snapshot(
+                toolWindow.contentManager.contentsRecursively.toList(),
+                AgentProcessManager.getInstance(project)::getSession,
+            )
+        }
+        Disposer.register(toolWindow.disposable) { chatRecord.freeze() }
+
         // Create the first session tab. The global Diff content is split from it
         // after the asynchronous CLI preflight finishes.
         if (AgentSettingsState.getInstance().autoStartOnOpen) {
@@ -391,6 +401,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             )
             content.isCloseable = true
             content.putUserData(CHAT_NUMBER_KEY, chatNumber)
+            content.putUserData(CHAT_ENTRY_KEY, ChatEntry(cli, sessionName))
             // Which agent is behind this tab, at a glance. Tool-window tabs hide content icons
             // unless asked to show them.
             content.icon = PrismIcons.forCli(cli)

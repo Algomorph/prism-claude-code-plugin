@@ -186,6 +186,8 @@
     <applicationListeners>
         <listener class="com.github.vgirotto.prism.listeners.FileChangeListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+        <listener class="com.github.vgirotto.prism.toolwindow.ChatTabsRecord$CloseListener"
+                  topic="com.intellij.openapi.project.ProjectCloseListener"/>
     </applicationListeners>
 
     <actions>
