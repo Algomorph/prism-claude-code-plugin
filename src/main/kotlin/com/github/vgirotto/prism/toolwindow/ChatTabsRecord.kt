@@ -2,6 +2,7 @@ package com.github.vgirotto.prism.toolwindow
 
 import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.AgentSession
+import com.github.vgirotto.prism.services.ResolvedCliCommand
 import com.github.vgirotto.prism.services.session.SessionIdentity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
@@ -20,6 +21,23 @@ import java.io.File
 
 /** One chat as the record keeps it: its agent, its name, and its conversation when known. */
 data class ChatEntry(val cli: AgentCli, val name: String, val identity: SessionIdentity? = null)
+
+/** One recorded chat to reopen: on [command], and on the conversation [resume] when not null. */
+internal data class RestoreStep(val entry: ChatEntry, val command: ResolvedCliCommand, val resume: SessionIdentity?)
+
+/** The chats to reopen, in recorded order, and the agents whose CLI was not found ([missing], once each). */
+internal data class Restore(val steps: List<RestoreStep>, val missing: List<AgentCli>)
+
+/** Pairs each chat of [plan] with its agent's resolved [commands] and its [resumeOf] conversation, in order. */
+internal fun restoreSteps(
+    plan: List<ChatEntry>,
+    commands: Map<AgentCli, ResolvedCliCommand?>,
+    resumeOf: (ChatEntry) -> SessionIdentity?,
+): Restore {
+    val steps = plan.mapNotNull { entry -> commands[entry.cli]?.let { RestoreStep(entry, it, resumeOf(entry)) } }
+    val missing = plan.map { it.cli }.distinct().filter { commands[it] == null }
+    return Restore(steps, missing)
+}
 
 /** What a chat content records before its session attaches: set at creation, see [ChatTabsRecord]. */
 val CHAT_ENTRY_KEY: Key<ChatEntry> = Key.create("PrismChatEntry")
