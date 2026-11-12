@@ -5,6 +5,16 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 O formato é baseado no [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Adicionado
+
+- **Os chats voltam após reiniciar**:
+  - **Comportamento**: quando um projeto abre novamente, o Prism reabre os seus chats na mesma ordem e nos mesmos agentes, e cada chat continua a sua conversa (`--resume` no Claude, `codex resume` no Codex).
+  - **Configurações**: **Manter as abas de chat ao reiniciar a IDE** e **Manter as sessões ao reiniciar a IDE**, ambas ativadas por padrão; a segunda só se aplica enquanto a primeira estiver ativada.
+  - **Alternativa**: um chat cuja conversa é desconhecida, ou cuja transcrição não existe mais, inicia uma nova conversa na mesma posição. Argumentos configurados que já selecionam uma conversa têm precedência.
+  - **Escopo**: a lista é guardada por projeto, no arquivo de workspace dele, que não é compartilhado pelo controle de versão. Os chats restaurados abrem no painel principal, sem a divisão dos painéis.
+
 ## [1.5.0] — 2026-11-19
 
 ### Adicionado

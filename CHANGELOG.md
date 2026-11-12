@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Chats come back after a restart**:
+  - **Behavior**: when a project opens again, Prism reopens its chats in the same order and on the same agents, and each chat continues its conversation (`--resume` for Claude, `codex resume` for Codex).
+  - **Settings**: **Persist LLM chat tabs on IDE restart** and **Persist LLM sessions on IDE restart**, both on by default; the second applies only while the first is on.
+  - **Fallback**: a chat whose conversation is unknown, or whose transcript is gone, starts a new conversation in the same position. Configured arguments that already select a conversation take precedence.
+  - **Scope**: the list is kept per project in its workspace file, which is not shared through version control. Restored chats open in the main pane, without the split layout.
+
 ## [1.5.0] — 2026-11-19
 
 ### Added
