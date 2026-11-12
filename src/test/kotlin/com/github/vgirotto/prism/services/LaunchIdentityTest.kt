@@ -4,6 +4,7 @@ import com.github.vgirotto.prism.services.session.ClaudeSessionStrategy
 import com.github.vgirotto.prism.services.session.CodexSessionStrategy
 import com.github.vgirotto.prism.services.session.SessionIdentity
 import com.github.vgirotto.prism.services.session.TabSessionFiles
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -14,6 +15,9 @@ import java.nio.file.Path
 class LaunchIdentityTest {
 
     @TempDir lateinit var dir: Path
+
+    @AfterEach
+    fun clearCodexVersions() = CodexSessionStrategy.clearCacheForTests()
 
     private val tab by lazy { TabSessionFiles(dir.resolve("tab")).create() }
 
@@ -48,5 +52,35 @@ class LaunchIdentityTest {
         val claude = ClaudeSessionStrategy().apply { launchCommand(tab, claude()) }
         assertNull(launchIdentity("s1", passesSessionId = false, claude))
         assertNull(launchIdentity("s1", passesSessionId = true, CodexSessionStrategy(versionOf = { null })))
+    }
+
+    private val recorded = SessionIdentity("s9", "/projects/s9.jsonl")
+
+    @Test
+    fun `a resumed Claude chat starts on its recorded conversation while the hook is installed`() {
+        val strategy = ClaudeSessionStrategy().apply { launchCommand(tab, claude("--resume", "s9")) }
+        assertEquals(recorded, resumedIdentity(recorded, strategy))
+    }
+
+    @Test
+    fun `a resumed Claude chat with the user's own settings stays unknown`() {
+        val strategy = ClaudeSessionStrategy().apply { launchCommand(tab, claude("--resume", "s9", "--settings", "/x.json")) }
+        assertNull(resumedIdentity(recorded, strategy))
+    }
+
+    @Test
+    fun `a resumed Codex chat starts on its recorded thread only with Prism's title items`() {
+        fun launched(version: String, vararg args: String) = CodexSessionStrategy(versionOf = { version })
+            .apply { launchCommand(tab, ResolvedCliCommand("/codex-$version", args.toList())) }
+
+        assertEquals(recorded, resumedIdentity(recorded, launched("0.160.0", "resume", "s9")))
+        assertNull(resumedIdentity(recorded, launched("0.160.0", "resume", "s9", "-c", "tui.terminal_title=[]")))
+        assertNull(resumedIdentity(recorded, launched("0.150.0", "resume", "s9")))
+    }
+
+    @Test
+    fun `nothing to resume gives no resumed identity`() {
+        val strategy = ClaudeSessionStrategy().apply { launchCommand(tab, claude()) }
+        assertNull(resumedIdentity(null, strategy))
     }
 }

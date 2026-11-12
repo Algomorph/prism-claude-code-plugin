@@ -44,6 +44,8 @@ class ClaudeSessionStrategy : AgentSessionStrategy {
 
     override fun reportsSwitches(): Boolean = hookInstalled
 
+    override fun followsSwitches(): Boolean = hookInstalled
+
     override fun identityEvents(tab: TabSessionFiles): IdentityEventSource =
         ClaudeHookEventReader(tab.claudeEvents)
 

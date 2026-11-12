@@ -34,6 +34,7 @@ class ChatSessionTrackerTest {
         override fun launchEnvironment() = emptyMap<String, String?>()
         override fun parseTitle(title: String) = parser(title)
         override fun reportsSwitches() = events != null
+        override fun followsSwitches() = events != null
         override fun identityEvents(tab: TabSessionFiles) = events
         override fun resolveIdentity(hint: IdHint): SessionIdentity? {
             resolveCalls++

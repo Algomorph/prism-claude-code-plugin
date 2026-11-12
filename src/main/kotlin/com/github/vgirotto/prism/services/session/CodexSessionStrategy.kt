@@ -66,6 +66,9 @@ class CodexSessionStrategy(
     /** Codex is launched with no identity: the title carries the thread id instead. */
     override fun reportsSwitches(): Boolean = false
 
+    /** The title carries the thread id only with Prism's title items. */
+    override fun followsSwitches(): Boolean = titleItemsSet
+
     override fun identityEvents(tab: TabSessionFiles): IdentityEventSource? = null
 
     override fun resolveIdentity(hint: IdHint): SessionIdentity? = store()?.complete(hint)
