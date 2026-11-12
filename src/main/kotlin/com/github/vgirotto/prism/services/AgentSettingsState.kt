@@ -25,6 +25,8 @@ class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
         var excludedPatterns: String = DEFAULT_EXCLUDED_PATTERNS,
         var maxFileSizeKb: Int = 512,
         var language: String = "en",
+        var persistChatTabs: Boolean = true,
+        var persistChatSessions: Boolean = true,
     )
 
     private var state = State()
@@ -79,6 +81,20 @@ class AgentSettingsState : PersistentStateComponent<AgentSettingsState.State> {
     var language: String
         get() = state.language
         set(value) { state.language = value }
+
+    /** Whether a project's chat tabs reopen, in order and on their agents, when the IDE restarts. */
+    var persistChatTabs: Boolean
+        get() = state.persistChatTabs
+        set(value) { state.persistChatTabs = value }
+
+    /** The user's choice to resume each reopened chat's conversation; see [effectivePersistChatSessions]. */
+    var persistChatSessions: Boolean
+        get() = state.persistChatSessions
+        set(value) { state.persistChatSessions = value }
+
+    /** Whether reopened chats resume their conversations: only while their tabs reopen at all. */
+    val effectivePersistChatSessions: Boolean
+        get() = persistChatTabs && persistChatSessions
 
     /**
      * Accepts both the legacy comma-separated form and the multiline form used by the settings UI.

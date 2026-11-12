@@ -6,6 +6,8 @@ import com.github.vgirotto.prism.services.AgentSettingsState
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.components.JBCheckBox
+import com.intellij.ui.dsl.builder.Cell
 import com.intellij.ui.dsl.builder.COLUMNS_LARGE
 import com.intellij.ui.dsl.builder.TopGap
 import com.intellij.ui.dsl.builder.bindIntValue
@@ -14,6 +16,7 @@ import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel as dslPanel
+import com.intellij.ui.dsl.builder.selected
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import javax.swing.event.DocumentEvent
@@ -37,6 +40,18 @@ class AgentSettingsConfigurable : BoundConfigurable(PrismBundle.message("setting
             row {
                 checkBox(PrismBundle.message("settings.autostart"))
                     .bindSelected(settings::autoStartOnOpen)
+            }
+            lateinit var persistTabs: Cell<JBCheckBox>
+            row {
+                persistTabs = checkBox(PrismBundle.message("settings.persist.tabs"))
+                    .bindSelected(settings::persistChatTabs)
+                    .comment(PrismBundle.message("settings.persist.tabs.comment"))
+            }
+            row {
+                checkBox(PrismBundle.message("settings.persist.sessions"))
+                    .bindSelected(settings::persistChatSessions)
+                    .enabledIf(persistTabs.selected)
+                    .comment(PrismBundle.message("settings.persist.sessions.comment"))
             }
             row(PrismBundle.message("settings.default.cli")) {
                 val labels = mapOf(

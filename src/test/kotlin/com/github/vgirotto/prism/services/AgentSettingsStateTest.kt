@@ -125,4 +125,36 @@ class AgentSettingsStateTest {
         assertEquals("/opt/claude", settings.cliPath(AgentCli.CLAUDE))
         assertEquals("/opt/codex", settings.cliPath(AgentCli.CODEX))
     }
+
+    @Test
+    fun `chat tabs and sessions persist by default`() {
+        val settings = AgentSettingsState()
+
+        assertTrue(settings.persistChatTabs)
+        assertTrue(settings.persistChatSessions)
+        assertTrue(settings.effectivePersistChatSessions)
+    }
+
+    @Test
+    fun `a saved state from before the persistence options keeps them on`() {
+        val settings = AgentSettingsState()
+
+        settings.loadState(AgentSettingsState.State(claudePath = "/opt/claude"))
+
+        assertTrue(settings.persistChatTabs)
+        assertTrue(settings.persistChatSessions)
+    }
+
+    @Test
+    fun `sessions persist only while chat tabs do`() {
+        val settings = AgentSettingsState()
+
+        settings.persistChatTabs = false
+        assertTrue(settings.persistChatSessions)
+        assertFalse(settings.effectivePersistChatSessions)
+
+        settings.persistChatTabs = true
+        settings.persistChatSessions = false
+        assertFalse(settings.effectivePersistChatSessions)
+    }
 }
