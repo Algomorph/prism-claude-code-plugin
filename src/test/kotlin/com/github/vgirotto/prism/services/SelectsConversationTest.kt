@@ -37,4 +37,17 @@ class SelectsConversationTest {
     fun `a value that merely looks like a flag is not mistaken for one`() {
         assertFalse(selectsConversation(listOf("--append-system-prompt", "use --continue carefully")))
     }
+
+    @Test
+    fun `a Codex config override is not a Codex conversation selection`() {
+        assertFalse(codexSelectsConversation(emptyList()))
+        assertFalse(codexSelectsConversation(listOf("-c", "model=\"o3\"")))
+        assertFalse(codexSelectsConversation(listOf("--model", "o3", "resume")))
+    }
+
+    @Test
+    fun `a leading resume or fork subcommand selects the Codex conversation`() {
+        assertTrue(codexSelectsConversation(listOf("resume", "--last")))
+        assertTrue(codexSelectsConversation(listOf("fork", "0b7c9a3e")))
+    }
 }

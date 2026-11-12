@@ -40,6 +40,12 @@ interface AgentSessionStrategy {
      */
     fun reportsSwitches(): Boolean
 
+    /**
+     * True when the command [launchCommand] last returned lets Prism see every conversation switch,
+     * by [identityEvents] or by the title, so an identity set at launch is corrected when it changes.
+     */
+    fun followsSwitches(): Boolean
+
     /** Identity changes the title does not show (Claude: hook events), or null if none. */
     fun identityEvents(tab: TabSessionFiles): IdentityEventSource?
 

@@ -127,6 +127,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
         cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
         resolvedCommand: ResolvedCliCommand,
         strategy: AgentSessionStrategy = cli.newSessionStrategy(),
+        resume: SessionIdentity? = null,
     ): SessionResult {
         val session = AgentSession(name = sessionName, cli = cli)
         loadModelFromAgentSettings(session)
@@ -203,13 +204,16 @@ class AgentProcessManager(private val project: Project) : Disposable {
                     // so the conversation starts as exactly <id>.jsonl. Gated on the runtime
                     // capability probe. It is only the provisional identity: the session hook
                     // reports the real one, and every switch after it.
+                    val resumed = resumeArguments(cli, resolvedCommand.arguments, resume)
                     val sessionIdFlag =
-                        if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
+                        if (resumed == null && cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
                             listOf("--session-id", session.id)
                         } else emptyList()
-                    val base = resolvedCommand.copy(arguments = resolvedCommand.arguments + sessionIdFlag)
+                    val base = resolvedCommand.copy(arguments = resumed ?: (resolvedCommand.arguments + sessionIdFlag))
                     val launch = strategy.launchCommand(tabFiles, base)
-                    val provisional = launchIdentity(session.id, sessionIdFlag.isNotEmpty(), strategy)
+                    val provisional =
+                        if (resumed != null) resumedIdentity(resume, strategy)
+                        else launchIdentity(session.id, sessionIdFlag.isNotEmpty(), strategy)
                     if (provisional != null && session.identity == null) session.identity = provisional
                     // `clear` runs after the shell echoes the line and before the agent paints,
                     // which hides the prompt without racing the agent's first paint.
@@ -219,6 +223,7 @@ class AgentProcessManager(private val project: Project) : Disposable {
                     log.info(
                         "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
                             (if (sessionIdFlag.isEmpty()) "" else " (--session-id)") +
+                            (if (resumed == null) "" else " (resume)") +
                             (if (launch == base) "" else " (session tracking)")
                     )
                 }
@@ -633,6 +638,37 @@ private val CONVERSATION_SELECTING_ARGS = setOf("--session-id", "-c", "--continu
  */
 internal fun selectsConversation(arguments: List<String>): Boolean =
     arguments.any { it.substringBefore('=') in CONVERSATION_SELECTING_ARGS }
+
+/**
+ * The identity a session launched on [resume]'s conversation starts with: [resume], while [strategy]
+ * follows the session's switches, so a later `/resume` or `/clear` cannot leave it stale. Otherwise
+ * null, until the agent reports one. Call after [AgentSessionStrategy.launchCommand].
+ */
+internal fun resumedIdentity(resume: SessionIdentity?, strategy: AgentSessionStrategy): SessionIdentity? =
+    resume?.takeIf { strategy.followsSwitches() }
+
+/** Codex subcommands that already pick the conversation a session opens. */
+private val CODEX_CONVERSATION_SUBCOMMANDS = setOf("resume", "fork")
+
+/** True when the configured Codex [arguments] already pick the conversation, with a leading subcommand. */
+internal fun codexSelectsConversation(arguments: List<String>): Boolean =
+    arguments.firstOrNull() in CODEX_CONVERSATION_SUBCOMMANDS
+
+/**
+ * The configured [arguments] with what launches [cli] on [resume]'s conversation: Claude's
+ * `--resume <id>`, or Codex's `resume <id>` subcommand ahead of them, so a configured prompt stays
+ * Codex's prompt. Null when there is nothing to resume, or when [arguments] already pick the
+ * conversation, which then takes precedence.
+ */
+internal fun resumeArguments(cli: AgentCli, arguments: List<String>, resume: SessionIdentity?): List<String>? {
+    if (resume == null) return null
+    return when (cli) {
+        AgentCli.CLAUDE ->
+            if (selectsConversation(arguments)) null else arguments + listOf("--resume", resume.sessionId)
+        AgentCli.CODEX ->
+            if (codexSelectsConversation(arguments)) null else listOf("resume", resume.sessionId) + arguments
+    }
+}
 
 /** Returns a shell-safe command line by quoting every executable and argument separately. */
 internal fun shellCommand(command: ResolvedCliCommand): String =
