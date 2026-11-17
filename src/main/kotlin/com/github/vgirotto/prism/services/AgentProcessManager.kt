@@ -652,9 +652,9 @@ internal fun resumedIdentity(resume: SessionIdentity?, strategy: AgentSessionStr
 /** Codex subcommands that already pick the conversation a session opens. */
 private val CODEX_CONVERSATION_SUBCOMMANDS = setOf("resume", "fork")
 
-/** True when the configured Codex [arguments] already pick the conversation, with a leading subcommand. */
+/** True when the configured Codex [arguments] already pick the conversation, with a subcommand, also after global options. */
 internal fun codexSelectsConversation(arguments: List<String>): Boolean =
-    arguments.firstOrNull() in CODEX_CONVERSATION_SUBCOMMANDS
+    arguments.any { it in CODEX_CONVERSATION_SUBCOMMANDS }
 
 /**
  * The configured [arguments] with what launches [cli] on [resume]'s conversation: Claude's
