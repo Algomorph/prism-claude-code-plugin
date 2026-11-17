@@ -16,8 +16,9 @@ data class TabTitle(val label: String, val name: String?)
  *
  *  - **Name.** The terminal title decides it. The latest title the [strategy] recognizes wins: a
  *    named reading sets the label, an unnamed one restores [placeholder] (`Chat #N`), and a title
- *    it does not recognize (the shell's, a transient frame) changes nothing. No file is read for
- *    the label.
+ *    it does not recognize (the shell's, a transient frame) changes nothing. Until the first
+ *    recognized title, the tab keeps its [initial] title (a restored chat's recorded name), if any.
+ *    No file is read for the label.
  *  - **Identity.** Follows the strategy's identity events (Claude's hook) and the id the title
  *    carries (Codex): a title whose id disagrees with the known identity clears it, and it is
  *    resolved again off the terminal thread. It is stored on the attached [AgentSession], for
@@ -42,6 +43,7 @@ class ChatSessionTracker(
     private val scheduler: Scheduler = PlatformScheduler,
     private val fastTickMs: Long = 500,
     private val slowTickMs: Long = 2_000,
+    initial: TabTitle? = null,
 ) : TerminalApplicationTitleListener, Disposable {
 
     /** Where the tracker runs its work; replaced in tests. */
@@ -67,7 +69,7 @@ class ChatSessionTracker(
 
     private var reading: TitleReading? = null
     private var fullName: String? = null
-    private var shown: TabTitle? = null
+    private var shown: TabTitle? = initial
     /** Bumped whenever a title invalidates the identity, so a stale resolution is dropped. */
     private var generation = 0
     private var slowTicks = 0

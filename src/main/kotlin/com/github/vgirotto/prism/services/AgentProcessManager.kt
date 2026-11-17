@@ -195,37 +195,41 @@ class AgentProcessManager(private val project: Project) : Disposable {
         startIdleMonitor(session)
         startProcessHealthMonitor(session)
 
+        // Deterministic session identity: for Claude, launch with `--session-id <id>` so the
+        // conversation starts as exactly <id>.jsonl. Gated on the runtime capability probe. It is
+        // only the provisional identity: the session hook reports the real one, and every switch
+        // after it. Decided while the shell starts, and set before the session is returned.
+        val (launch, launchDetails) = try {
+            val resumed = resumeArguments(cli, resolvedCommand.arguments, resume)
+            val sessionIdFlag =
+                if (resumed == null && cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
+                    listOf("--session-id", session.id)
+                } else emptyList()
+            val base = resolvedCommand.copy(arguments = resumed ?: (resolvedCommand.arguments + sessionIdFlag))
+            val launch = strategy.launchCommand(tabFiles, base)
+            val provisional =
+                if (resumed != null) resumedIdentity(resume, strategy)
+                else launchIdentity(session.id, sessionIdFlag.isNotEmpty(), strategy)
+            if (provisional != null) session.identity = provisional
+            launch to (if (sessionIdFlag.isEmpty()) "" else " (--session-id)") +
+                (if (resumed == null) "" else " (resume)") +
+                (if (launch == base) "" else " (session tracking)")
+        } catch (e: Exception) {
+            log.warn("Failed to prepare ${cli.name.lowercase()} command [${session.id}]", e)
+            null to ""
+        }
+
         // Send the agent command after a brief delay for shell init
-        Thread {
+        if (launch != null) Thread {
             try {
-                Thread.sleep(500)
+                Thread.sleep((500 - session.elapsedSinceLaunchMs()).coerceAtLeast(0))
                 if (process.isAlive) {
-                    // Deterministic session identity: for Claude, launch with `--session-id <id>`
-                    // so the conversation starts as exactly <id>.jsonl. Gated on the runtime
-                    // capability probe. It is only the provisional identity: the session hook
-                    // reports the real one, and every switch after it.
-                    val resumed = resumeArguments(cli, resolvedCommand.arguments, resume)
-                    val sessionIdFlag =
-                        if (resumed == null && cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
-                            listOf("--session-id", session.id)
-                        } else emptyList()
-                    val base = resolvedCommand.copy(arguments = resumed ?: (resolvedCommand.arguments + sessionIdFlag))
-                    val launch = strategy.launchCommand(tabFiles, base)
-                    val provisional =
-                        if (resumed != null) resumedIdentity(resume, strategy)
-                        else launchIdentity(session.id, sessionIdFlag.isNotEmpty(), strategy)
-                    if (provisional != null && session.identity == null) session.identity = provisional
                     // `clear` runs after the shell echoes the line and before the agent paints,
                     // which hides the prompt without racing the agent's first paint.
                     val cmd = "clear; " + shellCommand(launch) + "\n"
                     process.outputStream.write(cmd.toByteArray(StandardCharsets.UTF_8))
                     process.outputStream.flush()
-                    log.info(
-                        "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
-                            (if (sessionIdFlag.isEmpty()) "" else " (--session-id)") +
-                            (if (resumed == null) "" else " (resume)") +
-                            (if (launch == base) "" else " (session tracking)")
-                    )
+                    log.info("Sent ${cli.name.lowercase()} command to shell [${session.id}]$launchDetails")
                 }
             } catch (e: Exception) {
                 log.warn("Failed to send ${cli.name.lowercase()} command [${session.id}]", e)

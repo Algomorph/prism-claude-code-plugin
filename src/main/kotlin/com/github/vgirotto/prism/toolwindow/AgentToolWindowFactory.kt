@@ -480,10 +480,12 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // Follow the agent's session from its terminal title. The listener goes on before the
             // terminal starts (below), so the first title — a resumed chat's name — is not missed.
             val strategy = cli.newSessionStrategy()
+            val resumedTitle = resumedName?.let { TabTitle(ChatName(it).display(), it) }
             val tracker = ChatSessionTracker(
                 strategy,
                 placeholder = sessionName,
                 show = { title -> applyTabTitle(content, cli, title) },
+                initial = resumedTitle,
                 renamed = { session -> AgentProcessManager.getInstance(project).sessionChanged(session) },
             )
             val terminal = terminalWidget.terminal
@@ -491,7 +493,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             Disposer.register(disposable) { terminal.removeApplicationTitleListener(tracker) }
             Disposer.register(disposable, tracker)
 
-            resumedName?.let { applyTabTitle(content, cli, TabTitle(ChatName(it).display(), it)) }
+            resumedTitle?.let { applyTabTitle(content, cli, it) }
             targetManager.addContent(content)
             targetManager.setSelectedContent(content)
 
