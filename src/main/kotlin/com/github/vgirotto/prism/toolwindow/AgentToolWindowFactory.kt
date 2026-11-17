@@ -327,8 +327,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                 null
             }
             ApplicationManager.getApplication().invokeLater {
+                var notReopened = plan
                 try {
                     if (restore == null || project.isDisposed || toolWindow.isDisposed) return@invokeLater
+                    notReopened = restore.skipped
                     restore.missing.forEach { showCliNotFoundError(project, toolWindow, it, null) }
                     for (step in restore.steps) {
                         buildSessionTab(
@@ -338,7 +340,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     }
                     log.info("Restored ${restore.steps.size} chat(s), ${restore.steps.count { it.resume != null }} resumed")
                 } finally {
-                    record.restoreFinished()
+                    record.restoreFinished(notReopened)
                 }
             }
         }

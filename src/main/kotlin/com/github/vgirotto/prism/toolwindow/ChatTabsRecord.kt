@@ -25,8 +25,11 @@ data class ChatEntry(val cli: AgentCli, val name: String, val identity: SessionI
 /** One recorded chat to reopen: on [command], and on the conversation [resume] when not null. */
 internal data class RestoreStep(val entry: ChatEntry, val command: ResolvedCliCommand, val resume: SessionIdentity?)
 
-/** The chats to reopen, in recorded order, and the agents whose CLI was not found ([missing], once each). */
-internal data class Restore(val steps: List<RestoreStep>, val missing: List<AgentCli>)
+/**
+ * The chats to reopen, in recorded order; the chats [skipped] because their agent's CLI was not
+ * found; and those agents ([missing], once each).
+ */
+internal data class Restore(val steps: List<RestoreStep>, val skipped: List<ChatEntry>, val missing: List<AgentCli>)
 
 /** Pairs each chat of [plan] with its agent's resolved [commands] and its [resumeOf] conversation, in order. */
 internal fun restoreSteps(
@@ -35,8 +38,8 @@ internal fun restoreSteps(
     resumeOf: (ChatEntry) -> SessionIdentity?,
 ): Restore {
     val steps = plan.mapNotNull { entry -> commands[entry.cli]?.let { RestoreStep(entry, it, resumeOf(entry)) } }
-    val missing = plan.map { it.cli }.distinct().filter { commands[it] == null }
-    return Restore(steps, missing)
+    val skipped = plan.filter { commands[it.cli] == null }
+    return Restore(steps, skipped, skipped.map { it.cli }.distinct())
 }
 
 /** What a chat content records before its session attaches: set at creation, see [ChatTabsRecord]. */
@@ -46,8 +49,9 @@ val CHAT_ENTRY_KEY: Key<ChatEntry> = Key.create("PrismChatEntry")
  * The project's chats, in tool-window order, kept in its workspace file so they can reopen after a
  * restart. Saved from the live tool window ([attach]) at each IDE save, but only once restoration is
  * decided and done ([takeRestorePlan], [restoreFinished]), and never after the project starts
- * closing ([freeze]), so neither start-up nor teardown can erase it. It is kept whatever the
- * persistence settings say; they decide only whether it is restored.
+ * closing ([freeze]), so neither start-up nor teardown can erase it. Recorded chats a restore could
+ * not reopen stay after the open ones until one does. It is kept whatever the persistence settings
+ * say; they decide only whether it is restored.
  */
 @Service(Service.Level.PROJECT)
 @State(
@@ -78,9 +82,10 @@ class ChatTabsRecord : PersistentStateComponent<ChatTabsRecord.SavedChats> {
     private var phase = Phase.LOADED
     private var frozen = false
     private var source: () -> List<ChatEntry>? = { null }
+    private var notReopened: List<ChatEntry> = emptyList()
 
     override fun getState(): SavedChats {
-        if (phase == Phase.LIVE && !frozen) source()?.let { held = saved(it) }
+        if (phase == Phase.LIVE && !frozen) source()?.let { held = saved(it + notReopened) }
         return held
     }
 
@@ -108,9 +113,14 @@ class ChatTabsRecord : PersistentStateComponent<ChatTabsRecord.SavedChats> {
         return plan
     }
 
-    /** Ends restoration: the record follows the tool window from now on. */
-    fun restoreFinished() {
-        if (phase == Phase.RESTORING) phase = Phase.LIVE
+    /**
+     * Ends restoration: the record follows the tool window from now on, followed by the recorded
+     * chats [notReopened], which a later restore can still reopen.
+     */
+    fun restoreFinished(notReopened: List<ChatEntry> = emptyList()) {
+        if (phase != Phase.RESTORING) return
+        this.notReopened = notReopened
+        phase = Phase.LIVE
     }
 
     /** Keeps the chats open now as the record for good, as the project starts closing. */

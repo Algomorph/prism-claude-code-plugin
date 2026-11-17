@@ -71,6 +71,17 @@ class ChatTabsRecordTest {
     }
 
     @Test
+    fun `chats a restore could not reopen stay after the open ones`() {
+        val record = loaded(codex, claude)
+        record.attach { listOf(claude) }
+
+        record.takeRestorePlan(enabled = true, hasChats = false)
+        record.restoreFinished(notReopened = listOf(codex))
+
+        assertEquals(listOf(claude, codex), entriesSaved(record))
+    }
+
+    @Test
     fun `the plan is given once, and later calls replay nothing`() {
         val record = loaded(claude)
 
@@ -159,6 +170,7 @@ class ChatTabsRecordTest {
                 ),
                 restore.steps,
             )
+            assertEquals(emptyList<ChatEntry>(), restore.skipped)
             assertEquals(emptyList<AgentCli>(), restore.missing)
         }
     }
@@ -172,6 +184,7 @@ class ChatTabsRecordTest {
         ) { null }
 
         assertEquals(listOf(RestoreStep(claude, claudeCommand, null)), restore.steps)
+        assertEquals(listOf(codex, codex.copy(name = "Chat #3")), restore.skipped)
         assertEquals(listOf(AgentCli.CODEX), restore.missing)
     }
 
