@@ -335,13 +335,14 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
                     if (restore == null || project.isDisposed || toolWindow.isDisposed) return@invokeLater
                     notReopened = restore.skipped
                     restore.missing.forEach { showCliNotFoundError(project, toolWindow, it, null) }
-                    for (step in restore.steps) {
+                    val (reopened, failed) = restore.steps.partition { step ->
                         buildSessionTab(
                             project, toolWindow, changesVisible, step.entry.cli, step.command,
                             toolWindow.contentManager, null, globalDiffHost, step.entry, step.resume,
                         )
                     }
-                    log.info("Restored ${restore.steps.size} chat(s), ${restore.steps.count { it.resume != null }} resumed")
+                    notReopened = restore.skipped + failed.map { it.entry }
+                    log.info("Restored ${reopened.size} chat(s), ${reopened.count { it.resume != null }} resumed")
                 } finally {
                     record.restoreFinished(notReopened)
                 }
@@ -352,7 +353,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
     /**
      * Builds the tab UI (terminal, toolbar, diff panel) and starts the agent
      * session. Must run on the EDT; [createSessionTab] performs the off-EDT
-     * availability preflight before invoking this.
+     * availability preflight before invoking this. Returns whether the chat's tab was added.
      */
     private fun buildSessionTab(
         project: Project,
@@ -365,9 +366,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         globalDiffHost: GlobalDiffContentHost?,
         restored: ChatEntry? = null,
         resume: SessionIdentity? = null,
-    ) {
+    ): Boolean {
         val disposable = Disposer.newDisposable("AgentSession")
         Disposer.register(toolWindow.disposable, disposable)
+        var added = false
 
         try {
             val settingsProvider = JBTerminalSystemSettingsProvider()
@@ -501,6 +503,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
 
             resumedTitle?.let { applyTabTitle(content, cli, it) }
             targetManager.addContent(content)
+            added = true
             targetManager.setSelectedContent(content)
 
             installFocusActivation(terminalWithToolbar, disposable, binding)
@@ -545,6 +548,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             log.error("Failed to create agent terminal widget", e)
             showFallbackContent(toolWindow, e.message ?: "Unknown error")
         }
+        return added
     }
 
     /**
