@@ -42,12 +42,14 @@ class SelectsConversationTest {
     fun `a Codex config override is not a Codex conversation selection`() {
         assertFalse(codexSelectsConversation(emptyList()))
         assertFalse(codexSelectsConversation(listOf("-c", "model=\"o3\"")))
-        assertFalse(codexSelectsConversation(listOf("--model", "o3", "resume")))
+        assertFalse(codexSelectsConversation(listOf("--model", "o3", "resume the work")))
     }
 
     @Test
-    fun `a leading resume or fork subcommand selects the Codex conversation`() {
+    fun `a resume or fork subcommand selects the Codex conversation, also after global options`() {
         assertTrue(codexSelectsConversation(listOf("resume", "--last")))
         assertTrue(codexSelectsConversation(listOf("fork", "0b7c9a3e")))
+        assertTrue(codexSelectsConversation(listOf("--model", "o3", "resume", "--last")))
+        assertTrue(codexSelectsConversation(listOf("-c", "model=o3", "fork")))
     }
 }
