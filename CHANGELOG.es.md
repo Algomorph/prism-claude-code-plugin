@@ -5,6 +5,19 @@ Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 y este proyecto sigue el [Versionado Semántico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Añadido
+
+- **Nombres de sesión en las pestañas de chat**: cada pestaña de chat muestra el nombre de su conversación en lugar de `Chat #1`. El nombre de la pestaña es el nombre que muestra el agente. La pestaña cambia inmediatamente después de `/rename`, `/resume`, `/clear` y `/new`, y cuando el agente genera un título.
+  - Prism lee el nombre del título del terminal del agente. Prism no busca archivos de sesión para encontrar el nombre.
+  - En una sesión de Claude, Prism añade un hook `SessionStart` con la opción `--settings`. El hook indica a Prism qué sesión muestra la pestaña. Prism no escribe nada en tu configuración de Claude. Si los argumentos configurados de Claude ya contienen `--settings`, Prism no añade el hook, porque Claude usa solo la última opción `--settings`. El nombre de la pestaña sigue entonces el título, pero Prism no sabe qué conversación muestra la pestaña, porque nada informa del cambio a otra conversación.
+  - En una sesión de Codex, Prism define el título del terminal como el ID del hilo y el nombre del hilo con `-c tui.terminal_title`. Se necesita Codex 0.159.0 o posterior. Con un Codex anterior, o si los argumentos configurados de Codex ya definen `tui.terminal_title`, la pestaña conserva su número. Prism inicia Codex mediante `/bin/sh`, que registra la carpeta `CODEX_HOME` que Codex recibe de la configuración de tu shell. Prism lee entonces los archivos de sesión de Codex de esa carpeta. Codex recorta los nombres largos en el título. Para un nombre recortado, Prism lee el nombre completo del índice de sesiones de Codex para la descripción emergente.
+  - Hasta que el agente muestra un nombre, la pestaña conserva su número. Cuando el agente vuelve a no mostrar ningún nombre (por ejemplo, después de `/new`), el número vuelve. Una pestaña conserva su número mientras muestra un nombre, así que una pestaña nueva no repite el número de una pestaña abierta. Prism recorta un nombre largo en un límite de palabra, y nunca en medio de un carácter como un emoji o una letra acentuada. La descripción emergente muestra el nombre completo y el nombre del agente. Prism muestra un nombre como texto en todas partes, así que el marcado de un nombre (por ejemplo, una etiqueta de imagen) no se renderiza.
+  - La barra de estado, la notificación de que una sesión terminó y la siguiente interacción en el panel Changes también usan el nombre de la conversación. Una interacción conserva el nombre que tenía su chat cuando empezó la interacción. Un cambio de nombre no convierte un chat en el chat activo.
+  - Prism ahora encuentra la pestaña del historial de conversaciones por una clave en lugar de por su nombre visible, porque ahora un chat puede llamarse `History`. Las acciones que abren History, el panel Changes o un nuevo chat dividido junto al chat actual ahora encuentran ese chat cuando History o un panel de error tiene el foco, y mientras el chat todavía se está iniciando.
+- **Marcas de agente en las pestañas**: cada pestaña de chat, el selector New Session y las entradas de nueva sesión del menú Split muestran una marca para el agente. Las marcas son formas simples en los colores de Prism. No son logotipos de los proveedores.
+
 ## [1.4.0] — 2026-10-03
 
 ### Añadido

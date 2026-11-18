@@ -44,6 +44,10 @@ class CodexValidationService {
         }
     }
 
+    /** Parse the semantic version from `codex --version` (e.g. "codex-cli 0.159.0"). */
+    fun getCodexVersion(codexCommand: String = "codex"): String? =
+        CliProbe.versionIn(CliProbe.run(listOf(codexCommand, "--version"), 5))
+
     fun getCodexNotFoundMessage(): String {
         return """
             |Codex CLI is not installed.

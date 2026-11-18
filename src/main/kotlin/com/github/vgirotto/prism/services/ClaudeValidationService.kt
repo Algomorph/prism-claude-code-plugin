@@ -46,6 +46,52 @@ class ClaudeValidationService {
     }
 
     /**
+     * True when this Claude accepts `--session-id <uuid>`, which gives a tab its conversation
+     * from the launch on (see [com.github.vgirotto.prism.model.AgentSession.identity]). The
+     * **capability probe is authoritative** (does `--help` advertise `--session-id`?); the
+     * version string is only a fallback. When this returns false, Claude is launched without the
+     * option: the tab is still named from the terminal title, and its conversation is unknown
+     * until the session hook reports it.
+     */
+    fun supportsDeterministicSessions(claudeCommand: String = "claude"): Boolean {
+        // Primary: capability probe.
+        val help = CliProbe.run(listOf(claudeCommand, "--help"), 8)
+        if (help != null && help.contains("--session-id")) {
+            log.debug("Claude advertises --session-id — deterministic sessions supported")
+            return true
+        }
+        // Fallback: version floor — probe the SAME configured command, not PATH's claude.
+        return VersionGate.meetsMinimumVersion(getClaudeVersion(claudeCommand))
+    }
+
+    /** Parse the semantic version from `claude --version` (e.g. "2.1.210 (Claude Code)"). */
+    fun getClaudeVersion(claudeCommand: String = "claude"): String? {
+        return CliProbe.versionIn(CliProbe.run(listOf(claudeCommand, "--version"), 5))
+    }
+
+    object VersionGate {
+        /** The oldest Claude Code checked to accept `--session-id`; used only when `--help` cannot be read. */
+        const val MIN_SUPPORTED_VERSION = "2.1.193"
+
+        fun meetsMinimumVersion(version: String?): Boolean {
+            if (version == null) return false
+            return compareVersions(version, MIN_SUPPORTED_VERSION) >= 0
+        }
+
+        /** Numeric dotted-version comparison; returns <0, 0, >0. */
+        fun compareVersions(a: String, b: String): Int {
+            val pa = a.split(".").mapNotNull { it.toIntOrNull() }
+            val pb = b.split(".").mapNotNull { it.toIntOrNull() }
+            for (i in 0 until maxOf(pa.size, pb.size)) {
+                val x = pa.getOrElse(i) { 0 }
+                val y = pb.getOrElse(i) { 0 }
+                if (x != y) return x.compareTo(y)
+            }
+            return 0
+        }
+    }
+
+    /**
      * Checks if a process is still alive and reports errors if dead.
      * @return true if process is alive, false if dead
      */

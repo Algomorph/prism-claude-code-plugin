@@ -1,6 +1,8 @@
 package com.github.vgirotto.prism.model
 
 import com.github.vgirotto.prism.services.AgentTtyConnector
+import com.github.vgirotto.prism.services.session.SessionIdentity
+import com.github.vgirotto.prism.services.session.TabSessionFiles
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import java.util.Timer
@@ -15,7 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class AgentSession(
     val id: String = UUID.randomUUID().toString(),
-    var name: String = "Chat",
+    /** What Prism calls this chat: its conversation's name, or its `Chat #N` placeholder. */
+    @Volatile var name: String = "Chat",
     val cli: AgentCli = AgentCli.DEFAULT,
 ) : Disposable {
 
@@ -34,6 +37,27 @@ class AgentSession(
 
     /** Monotonic reading taken as the session launch begins; 0 until it does. */
     @Volatile var launchStartedAtNanos: Long = 0L
+
+    /**
+     * The conversation this session shows, when Prism knows it; null while it does not. It is
+     * never guessed, but it is only as current as what the agent reports, and it can lag a switch:
+     *
+     *  - **Claude**: the `--session-id` the session was launched with, until the session hook
+     *    reports the session at startup and at each `/resume`, `/clear` and compaction. The hook's
+     *    events are read every 0.5 s, so for that long after a switch this still names the
+     *    previous conversation. Null when the configured command passes its own `--settings`
+     *    (Prism cannot add its hook then, so no switch would be reported), and, until the hook
+     *    reports, when this Claude does not accept `--session-id`.
+     *  - **Codex**: the thread whose id the terminal title shows, completed against Codex's own
+     *    ids. Null until that completion is unambiguous, and for a Codex older than 0.159.0 or one
+     *    whose arguments choose their own title items. The transcript path is null until Codex
+     *    creates the rollout file (at the first turn), and after a `thread/revert` it can name
+     *    the previous rollout file for up to 30 s.
+     */
+    @Volatile var identity: SessionIdentity? = null
+
+    /** This session's private directory (the agent's hook events), deleted with the session. */
+    @Volatile var tabFiles: TabSessionFiles? = null
 
     /** Guards the one-shot "first output" startup timing log. */
     @Volatile var firstOutputLogged: Boolean = false
@@ -92,6 +116,7 @@ class AgentSession(
         } catch (_: Exception) {}
         process = null
         connector = null
+        try { tabFiles?.delete() } catch (_: Exception) {}
         state = SessionState.STOPPED
     }
 }

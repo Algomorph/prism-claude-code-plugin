@@ -9,6 +9,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
+import java.awt.Component
 import java.awt.KeyboardFocusManager
 import javax.swing.SwingUtilities
 
@@ -20,31 +21,47 @@ internal fun globalDiffSplitDirection(anchor: ToolWindowAnchor): SplitDirection 
     }
 
 /**
- * Resolves the tab a toolwindow-level action should act on: whichever session content
- * currently holds keyboard focus, else the one matching [AgentProcessManager.activeSessionId],
- * else the selected tab, else the first tab — skipping the global Diff content throughout.
- * Shared by [GlobalDiffContentHost] and [AgentToolWindowFactory] so the two callers can't
- * drift out of sync the way they previously did.
+ * Resolves the chat a session action should act on (see [chooseSessionContent]). Shared by
+ * [GlobalDiffContentHost] and [AgentToolWindowFactory] so the two callers can't drift out of sync
+ * the way they previously did.
  */
-internal fun resolveActiveSessionContent(project: Project, toolWindow: ToolWindow): Content? {
-    val contents = toolWindow.contentManager.contentsRecursively
-        .filterNot(GlobalDiffContentHost::isGlobalDiff)
-    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
-    if (focusOwner != null) {
-        contents.firstOrNull {
-            focusOwner === it.component || SwingUtilities.isDescendingFrom(focusOwner, it.component)
-        }?.let { return it }
-    }
+internal fun resolveActiveSessionContent(project: Project, toolWindow: ToolWindow): Content? =
+    chooseSessionContent(
+        toolWindow.contentManager.contentsRecursively,
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner,
+        AgentProcessManager.getInstance(project).activeSessionId,
+        toolWindow.contentManager.selectedContent,
+    )
 
-    val activeSessionId = AgentProcessManager.getInstance(project).activeSessionId
-    if (activeSessionId != null) {
-        contents.firstOrNull {
-            it.getUserData(AgentToolWindowFactory.SESSION_ID_KEY) == activeSessionId
-        }?.let { return it }
-    }
-    return toolWindow.contentManager.selectedContent?.takeUnless(GlobalDiffContentHost::isGlobalDiff)
-        ?: contents.firstOrNull()
+/**
+ * The chat among [contents] that holds keyboard focus ([focusOwner]), else the one running session
+ * [activeSessionId], else [selected], else the first. Only chats count, a chat still starting
+ * included: never History, the global Diff or an error panel, even when one of them has focus.
+ */
+internal fun chooseSessionContent(
+    contents: List<Content>,
+    focusOwner: Component?,
+    activeSessionId: String?,
+    selected: Content?,
+): Content? {
+    val chats = contents.filter(AgentToolWindowFactory::isChat)
+    return chats.firstOrNull { holdsFocus(it, focusOwner) }
+        ?: activeSessionId?.let { id -> chats.firstOrNull { it.getUserData(AgentToolWindowFactory.SESSION_ID_KEY) == id } }
+        ?: selected?.takeIf(AgentToolWindowFactory::isChat)
+        ?: chats.firstOrNull()
 }
+
+/** The content, other than the global Diff, that holds keyboard focus, if any. */
+internal fun resolveFocusedContent(toolWindow: ToolWindow): Content? {
+    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+    return toolWindow.contentManager.contentsRecursively
+        .filterNot(GlobalDiffContentHost::isGlobalDiff)
+        .firstOrNull { holdsFocus(it, focusOwner) }
+}
+
+private fun holdsFocus(content: Content, focusOwner: Component?): Boolean =
+    focusOwner != null &&
+        (focusOwner === content.component || SwingUtilities.isDescendingFrom(focusOwner, content.component))
 
 /**
  * Owns the single project-wide Diff UI and presents it as an independent

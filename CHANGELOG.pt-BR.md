@@ -5,6 +5,19 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 O formato é baseado no [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Adicionado
+
+- **Nomes de sessão nas abas de chat**: cada aba de chat mostra o nome da sua conversa em vez de `Chat #1`. O nome da aba é o nome que o agente mostra. A aba muda imediatamente após `/rename`, `/resume`, `/clear` e `/new`, e quando o agente gera um título.
+  - O Prism lê o nome do título do terminal do agente. O Prism não procura arquivos de sessão para encontrar o nome.
+  - Em uma sessão do Claude, o Prism adiciona um hook `SessionStart` com a opção `--settings`. O hook informa ao Prism qual sessão a aba mostra. O Prism não grava nada nas suas configurações do Claude. Se os argumentos configurados do Claude já contêm `--settings`, o Prism não adiciona o hook, porque o Claude usa somente a última opção `--settings`. O nome da aba então continua a seguir o título, mas o Prism não sabe qual conversa a aba mostra, porque nada informa a troca para outra conversa.
+  - Em uma sessão do Codex, o Prism define o título do terminal como o ID da thread e o nome da thread com `-c tui.terminal_title`. É necessário o Codex 0.159.0 ou posterior. Com um Codex anterior, ou se os argumentos configurados do Codex já definem `tui.terminal_title`, a aba mantém seu número. O Prism inicia o Codex por meio de `/bin/sh`, que registra a pasta `CODEX_HOME` que o Codex recebe da configuração do seu shell. O Prism então lê os arquivos de sessão do Codex dessa pasta. O Codex corta nomes longos no título. Para um nome cortado, o Prism lê o nome completo do índice de sessões do Codex para a dica da aba.
+  - Até que o agente mostre um nome, a aba mantém seu número. Quando o agente volta a não mostrar nenhum nome (por exemplo, após `/new`), o número volta. Uma aba mantém seu número enquanto mostra um nome, então uma nova aba não repete o número de uma aba aberta. O Prism corta um nome longo em um limite de palavra, e nunca no meio de um caractere como um emoji ou uma letra acentuada. A dica da aba mostra o nome completo e o nome do agente. O Prism mostra um nome como texto em todos os lugares, então marcações em um nome (por exemplo, uma tag de imagem) não são renderizadas.
+  - A barra de status, a notificação de que uma sessão terminou e a próxima interação no painel Changes também usam o nome da conversa. Uma interação mantém o nome que o seu chat tinha quando a interação começou. Uma mudança de nome não torna um chat o chat ativo.
+  - O Prism agora encontra a aba de histórico de conversas por uma chave, e não pelo nome exibido, porque agora um chat pode se chamar `History`. As ações que abrem o History, o painel Changes ou um novo chat dividido ao lado do chat atual agora encontram esse chat quando o History ou um painel de erro tem o foco, e enquanto o chat ainda está iniciando.
+- **Marcas de agente nas abas**: cada aba de chat, o seletor New Session e as entradas de nova sessão do menu Split mostram uma marca para o agente. As marcas são formas simples nas cores do Prism. Não são logotipos dos fornecedores.
+
 ## [1.4.0] — 2026-10-03
 
 ### Adicionado

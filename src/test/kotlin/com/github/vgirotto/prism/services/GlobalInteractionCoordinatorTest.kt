@@ -43,6 +43,21 @@ class GlobalInteractionCoordinatorTest {
     }
 
     @Test
+    fun `a chat renamed during an interaction keeps its old name there and takes the new one next`() {
+        val coordinator = GlobalInteractionCoordinator()
+
+        coordinator.begin("a", "Chat #1")
+        coordinator.begin("b", "Chat #2")
+        assertNull(coordinator.finish("a"))
+        coordinator.begin("a", "Renamed conversation")
+        assertNull(coordinator.finish("a"))
+        assertEquals(listOf("Chat #1", "Chat #2"), coordinator.finish("b")?.sessionNames)
+
+        coordinator.begin("a", "Renamed conversation")
+        assertEquals(listOf("Renamed conversation"), coordinator.finish("a")?.sessionNames)
+    }
+
+    @Test
     fun `duplicate begin and finish do not create duplicate groups`() {
         val coordinator = GlobalInteractionCoordinator()
 

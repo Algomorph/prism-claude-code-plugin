@@ -110,7 +110,7 @@ class AgentStatusBarWidget(private val project: Project) : CustomStatusBarWidget
 
         label.text = text
         label.foreground = color
-        label.toolTipText = buildString {
+        label.toolTipText = ChatNameText.tooltip(buildString {
             append(PrismBundle.message("status.tooltip.prefix"))
             if (session != null) append(" — ${session.name}")
             if (modelPart != null) append(", ${PrismBundle.message("status.tooltip.model")} $modelPart")
@@ -121,6 +121,6 @@ class AgentStatusBarWidget(private val project: Project) : CustomStatusBarWidget
             }
             append(", ${PrismBundle.message("status.tooltip.status")} ${globalState.name.lowercase()}")
             if (sessionCount > 1) append(" (${PrismBundle.message("status.tooltip.sessions", sessionCount)})")
-        }
+        })
     }
 }

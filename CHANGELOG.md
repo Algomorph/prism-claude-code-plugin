@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Session names on chat tabs**: each chat tab shows the name of its conversation instead of `Chat #1`. The tab name is the name that the agent shows. The tab changes immediately after `/rename`, `/resume`, `/clear` and `/new`, and when the agent generates a title.
+  - Prism reads the name from the terminal title of the agent. Prism does not look for session files to find the name.
+  - For a Claude session, Prism adds a `SessionStart` hook with the `--settings` option. The hook tells Prism which session the tab shows. Prism writes nothing to your Claude settings. If the configured Claude arguments already contain `--settings`, Prism does not add the hook, because Claude uses only the last `--settings` option. The tab name then continues to follow the title, but Prism does not know which conversation the tab shows, because nothing reports a switch to another conversation.
+  - For a Codex session, Prism sets the terminal title to the thread ID and the thread name with `-c tui.terminal_title`. Codex 0.159.0 or later is necessary. With an earlier Codex, or if the configured Codex arguments already set `tui.terminal_title`, the tab keeps its number. Prism starts Codex through `/bin/sh`, which records the `CODEX_HOME` folder that Codex gets from your shell setup. Prism then reads the Codex session files from that folder. Codex cuts long names in the title. For a cut name, Prism reads the full name from the Codex session index for the tooltip.
+  - Until the agent shows a name, the tab keeps its number. When the agent shows no name again (for example, after `/new`), the number comes back. A tab keeps its number while it shows a name, so a new tab does not repeat the number of an open tab. Prism clips a long name at a word boundary, and never in the middle of a character such as an emoji or an accented letter. The tooltip shows the full name and the name of the agent. Prism shows a name as text everywhere, so markup in a name (for example, an image tag) does not render.
+  - The status bar, the notification that a session ended, and the next interaction in the Changes panel also use the name of the conversation. An interaction keeps the name that its chat had when the interaction started. A change of name does not make a chat the active chat.
+  - Prism now finds the Conversation History tab by a key instead of by its display name, because a chat can now use the name `History`. The actions that open History, the Changes panel or a new split chat next to the current chat now find that chat when History or an error panel has focus, and while the chat is still starting.
+- **Agent marks on tabs**: each chat tab, the New Session picker, and the new-session entries of the Split menu show a mark for the agent. The marks are simple shapes in the Prism colors. They are not vendor logos.
+
 ## [1.4.0] — 2026-10-03
 
 ### Added

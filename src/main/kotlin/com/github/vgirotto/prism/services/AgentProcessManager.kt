@@ -4,8 +4,13 @@ import com.github.vgirotto.prism.model.AgentCli
 import com.github.vgirotto.prism.model.AgentSession
 import com.github.vgirotto.prism.model.AgentSession.SessionState
 import com.github.vgirotto.prism.model.InteractionDiff
+import com.github.vgirotto.prism.services.session.AgentSessionStrategy
+import com.github.vgirotto.prism.services.session.SessionIdentity
+import com.github.vgirotto.prism.services.session.TabSessionFiles
+import com.github.vgirotto.prism.services.session.newSessionStrategy
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -96,6 +101,9 @@ class AgentProcessManager(private val project: Project) : Disposable {
         sessions[sessionId]?.let { notifyStateListeners(it) }
     }
 
+    /** Tells the UI that [session]'s details (such as its name) changed, without making it active. */
+    fun sessionChanged(session: AgentSession) = notifyStateListeners(session)
+
     private fun notifyStateListeners(session: AgentSession) {
         ApplicationManager.getApplication().invokeLater {
             for (l in stateListeners) {
@@ -110,27 +118,33 @@ class AgentProcessManager(private val project: Project) : Disposable {
      *
      * [resolvedCommand] is the absolute path and literal arguments the availability preflight
      * resolved. Every token is shell-quoted before it is typed into the PTY.
+     *
+     * [strategy] adds what the tab needs to follow the agent's session (see
+     * [AgentSessionStrategy]); the caller keeps it to read the terminal title with.
      */
     fun createSession(
         sessionName: String = "Chat",
         cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
         resolvedCommand: ResolvedCliCommand,
+        strategy: AgentSessionStrategy = cli.newSessionStrategy(),
     ): SessionResult {
         val session = AgentSession(name = sessionName, cli = cli)
         loadModelFromAgentSettings(session)
         session.state = SessionState.STARTING
+        val tabFiles = TabSessionFiles.under(PathManager.getTempPath(), session.id).create()
+        session.tabFiles = tabFiles
 
         val settings = AgentSettingsState.getInstance()
         val binaryPath = resolvedCommand.executable
-        // `clear` runs after the shell echoes the line and before the agent paints, which
-        // hides the prompt without racing the agent's first paint.
-        val launchCommand = "clear; " + shellCommand(resolvedCommand)
         val shell = settings.shellPath
 
         val env = HashMap(System.getenv())
         env["TERM"] = "xterm-256color"
         // Claude Code reads this to know it is embedded; it means nothing to other CLIs.
         if (cli == AgentCli.CLAUDE) env["CLAUDE_CODE_WRAPPER"] = "intellij"
+        for ((name, value) in strategy.launchEnvironment()) {
+            if (value == null) env.remove(name) else env[name] = value
+        }
 
         val workDir = project.basePath ?: System.getProperty("user.home")
 
@@ -185,10 +199,28 @@ class AgentProcessManager(private val project: Project) : Disposable {
             try {
                 Thread.sleep(500)
                 if (process.isAlive) {
-                    val cmd = "$launchCommand\n"
+                    // Deterministic session identity: for Claude, launch with `--session-id <id>`
+                    // so the conversation starts as exactly <id>.jsonl. Gated on the runtime
+                    // capability probe. It is only the provisional identity: the session hook
+                    // reports the real one, and every switch after it.
+                    val sessionIdFlag =
+                        if (cli == AgentCli.CLAUDE && deterministicSessionsSupported(resolvedCommand)) {
+                            listOf("--session-id", session.id)
+                        } else emptyList()
+                    val base = resolvedCommand.copy(arguments = resolvedCommand.arguments + sessionIdFlag)
+                    val launch = strategy.launchCommand(tabFiles, base)
+                    val provisional = launchIdentity(session.id, sessionIdFlag.isNotEmpty(), strategy)
+                    if (provisional != null && session.identity == null) session.identity = provisional
+                    // `clear` runs after the shell echoes the line and before the agent paints,
+                    // which hides the prompt without racing the agent's first paint.
+                    val cmd = "clear; " + shellCommand(launch) + "\n"
                     process.outputStream.write(cmd.toByteArray(StandardCharsets.UTF_8))
                     process.outputStream.flush()
-                    log.info("Sent ${cli.name.lowercase()} command to shell [${session.id}]")
+                    log.info(
+                        "Sent ${cli.name.lowercase()} command to shell [${session.id}]" +
+                            (if (sessionIdFlag.isEmpty()) "" else " (--session-id)") +
+                            (if (launch == base) "" else " (session tracking)")
+                    )
                 }
             } catch (e: Exception) {
                 log.warn("Failed to send ${cli.name.lowercase()} command [${session.id}]", e)
@@ -198,6 +230,27 @@ class AgentProcessManager(private val project: Project) : Disposable {
         notifyStateListeners(session)
 
         return SessionResult(session.id, process, connector)
+    }
+
+    /** `--session-id` capability per resolved executable, so a changed CLI path is re-probed. */
+    private val deterministicSupportByExecutable = ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * Cached runtime-capability probe for Claude's `--session-id`.
+     *
+     * Probes the executable the availability preflight resolved, not the raw setting: the
+     * setting may carry arguments, and a bare name may not be on the IDE's own PATH, and
+     * either would make the probe fail and silently drop the session identity.
+     */
+    private fun deterministicSessionsSupported(command: ResolvedCliCommand): Boolean {
+        if (selectsConversation(command.arguments)) return false
+        return deterministicSupportByExecutable.getOrPut(command.executable) {
+            try {
+                ClaudeValidationService.getInstance().supportsDeterministicSessions(command.executable)
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 
     private fun onUserInput(session: AgentSession) {
@@ -556,6 +609,30 @@ internal fun codexSubmitChunks(text: String): List<String>? {
  */
 internal fun shellQuote(path: String): String =
     "'" + path.replace("'", "'\\''") + "'"
+
+/**
+ * The identity a session has from its launch, before the agent reports one: the `--session-id` it
+ * was launched with ([passesSessionId]), if [strategy] reports every switch after it. Otherwise
+ * null, and the identity stays unknown: the launch id would be wrong after the first switch.
+ * Call after [AgentSessionStrategy.launchCommand].
+ */
+internal fun launchIdentity(
+    sessionId: String,
+    passesSessionId: Boolean,
+    strategy: AgentSessionStrategy,
+): SessionIdentity? =
+    if (passesSessionId && strategy.reportsSwitches()) SessionIdentity(sessionId, null) else null
+
+/** Claude options that already pick the conversation a session opens. */
+private val CONVERSATION_SELECTING_ARGS = setOf("--session-id", "-c", "--continue", "-r", "--resume")
+
+/**
+ * True when the configured Claude [arguments] already pick the conversation, so Prism must not
+ * add `--session-id`: Claude rejects it next to `--continue`/`--resume` (without
+ * `--fork-session`), and the conversation file would not be `<session id>.jsonl` regardless.
+ */
+internal fun selectsConversation(arguments: List<String>): Boolean =
+    arguments.any { it.substringBefore('=') in CONVERSATION_SELECTING_ARGS }
 
 /** Returns a shell-safe command line by quoting every executable and argument separately. */
 internal fun shellCommand(command: ResolvedCliCommand): String =
