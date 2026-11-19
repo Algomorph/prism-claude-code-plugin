@@ -50,9 +50,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h2>Unreleased — Named Chat Tabs</h2>
+    <h2>v1.5.0 — Named Chats &amp; File Links</h2>
     <ul>
-        <li>New: <strong>named chat tabs</strong> — a tab shows the name that its agent shows instead of <code>Chat #1</code>, and changes immediately after <code>/rename</code>, <code>/resume</code>, <code>/clear</code> and <code>/new</code>. The tab also shows a mark for its agent, and the tooltip shows the full name. Codex 0.159.0 or later is necessary for Codex names.</li>
+        <li>New: chat tabs follow conversation names, with full names in tooltips and distinct agent icons. Names also appear in the status bar, session-ended notifications, and the Changes panel. Codex names require Codex 0.159.0 or later</li>
+        <li>New: local file links in terminal output open directly in the IDE editor, including line and column numbers</li>
+        <li>Fix: automatic startup falls back to another installed agent when the default CLI is unavailable</li>
     </ul>
     <h2>v1.4.0 — Split Sessions &amp; Terminal Settings</h2>
     <ul>

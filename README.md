@@ -1,6 +1,6 @@
 # <img src="src/main/resources/icons/prism.svg" width="24" height="24" /> Prism — IDE Companion for Claude Code and Codex
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/VGirotto/prism-claude-code-plugin/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![JetBrains](https://img.shields.io/badge/JetBrains-2024.3+-orange.svg)](https://plugins.jetbrains.com/plugin/31025-prism--ide-companion-for-claude-code-and-codex)
 
@@ -106,6 +106,12 @@ Right-click in editor to access: **Explain** / **Review** / **Fix** / **Generate
 
 - 📎 File reference with `@path` in the terminal
 - 🎯 Auto-capture of context (active file, selection, open files)
+
+---
+
+### 🏷️ Named Chat Tabs
+
+Chat tabs show the conversation name and an icon identifying Claude Code or Codex. Names update when you rename or switch conversations, making it easier to find the right chat among multiple sessions.
 
 ---
 
