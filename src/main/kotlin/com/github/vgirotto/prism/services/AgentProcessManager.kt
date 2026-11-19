@@ -632,7 +632,9 @@ private val CONVERSATION_SELECTING_ARGS = setOf("--session-id", "-c", "--continu
  * `--fork-session`), and the conversation file would not be `<session id>.jsonl` regardless.
  */
 internal fun selectsConversation(arguments: List<String>): Boolean =
-    arguments.any { it.substringBefore('=') in CONVERSATION_SELECTING_ARGS }
+    arguments.any {
+        it.substringBefore('=') in CONVERSATION_SELECTING_ARGS || it.startsWith("-r")
+    }
 
 /** Returns a shell-safe command line by quoting every executable and argument separately. */
 internal fun shellCommand(command: ResolvedCliCommand): String =

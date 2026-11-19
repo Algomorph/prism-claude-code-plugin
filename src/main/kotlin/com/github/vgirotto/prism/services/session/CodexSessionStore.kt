@@ -21,7 +21,9 @@ import java.time.ZoneOffset
  *
  * The index is read incrementally, from where the previous read stopped, with bounded memory (see
  * [AppendedLines]); a partial last line is left for the next read. Only the names of the
- * [MAX_NAMES] threads named most recently are kept. Thread-safe.
+ * [MAX_NAMES] threads named most recently are kept. Large indexes rewritten in place outside the
+ * reader's boundary window are refreshed on the first poll after its 30 s full-validation
+ * interval; appends remain incremental between checks. Thread-safe.
  */
 class CodexSessionStore(private val home: Path) {
 

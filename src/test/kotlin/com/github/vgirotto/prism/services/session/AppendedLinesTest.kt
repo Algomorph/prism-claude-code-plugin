@@ -163,6 +163,63 @@ class AppendedLinesTest {
     }
 
     @Test
+    fun `large files check earlier bytes periodically despite continuous appends`() {
+        var now = 0L
+        val lines = AppendedLines(path, chunkBytes = 16, nanoTime = { now })
+        val original = "before\n" + "unchanged boundary\n".repeat(3)
+        file.writeText(original)
+        lines.lines()
+        file.writeText(original.replaceFirst("before", "AFTER!"))
+        for (seconds in listOf(10L, 20L)) {
+            now = Duration.ofSeconds(seconds).toNanos()
+            file.appendText("append $seconds\n")
+            assertEquals(0 to listOf("append $seconds"), lines.readCountingResets())
+        }
+        now = AppendedLines.FULL_VALIDATION_INTERVAL
+        file.appendText("append 30\n")
+        assertEquals(1 to file.readLines(), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a pending earlier rewrite is checked even without further file changes`() {
+        var now = 0L
+        val lines = AppendedLines(path, chunkBytes = 16, nanoTime = { now })
+        val original = "before\n" + "unchanged boundary\n".repeat(3)
+        val oldTime = FileTime.from(Instant.now().minusSeconds(3600))
+        file.writeText(original)
+        Files.setLastModifiedTime(path, oldTime)
+        lines.lines()
+        file.writeText(original.replaceFirst("before", "AFTER!"))
+        Files.setLastModifiedTime(path, FileTime.from(oldTime.toInstant().plusMillis(1)))
+        now = Duration.ofSeconds(10).toNanos()
+        assertEquals(0 to emptyList<String>(), lines.readCountingResets())
+        now = AppendedLines.FULL_VALIDATION_INTERVAL
+        assertEquals(1 to file.readLines(), lines.readCountingResets())
+    }
+
+    @Test
+    fun `a large file rewritten at the consumed boundary resets immediately`() {
+        val lines = AppendedLines(path, chunkBytes = 16, nanoTime = { 0L })
+        file.writeText("earlier\n".repeat(8) + "before\n")
+        lines.lines()
+        file.writeText("earlier\n".repeat(8) + "AFTER!\n")
+        assertEquals(1 to file.readLines(), lines.readCountingResets())
+    }
+
+    @Test
+    fun `valid appends stay incremental across full validation intervals`() {
+        var now = 0L
+        val lines = AppendedLines(path, chunkBytes = 16, nanoTime = { now })
+        file.writeText("original\n".repeat(8))
+        lines.lines()
+        for (seconds in listOf(10L, 20L, 30L, 40L)) {
+            now = Duration.ofSeconds(seconds).toNanos()
+            file.appendText("append $seconds\n")
+            assertEquals(0 to listOf("append $seconds"), lines.readCountingResets())
+        }
+    }
+
+    @Test
     fun `multi-byte characters split across chunks are decoded whole`() {
         val lines = AppendedLines(path, maxLineBytes = 64, chunkBytes = 3)
         file.writeText("naïve — 名前 ✳\n")

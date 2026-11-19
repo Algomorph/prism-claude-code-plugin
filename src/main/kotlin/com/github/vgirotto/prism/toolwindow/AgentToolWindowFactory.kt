@@ -234,7 +234,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         project: Project,
         toolWindow: ToolWindow,
         changesVisible: Boolean,
-        cli: AgentCli = AgentSettingsState.getInstance().defaultCli,
+        cli: AgentCli? = null,
         requestedManager: ContentManager? = null,
         splitRequest: SplitRequest? = null,
         globalDiffHost: GlobalDiffContentHost? = null,
@@ -251,28 +251,31 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             // Keep the resolved command, not just a yes/no: the session launches this
             // exact binary with the configured literal arguments.
             val preflightStartedAtNanos = System.nanoTime()
-            val resolvedCommand = when (cli) {
-                AgentCli.CLAUDE ->
-                    ClaudeValidationService.getInstance().getClaudeCommand(settings.claudePath)
-                AgentCli.CODEX ->
-                    CodexValidationService.getInstance().getCodexCommand(settings.codexPath)
+            val (selectedCli, resolvedCommand) = resolveSessionCli(cli, settings.defaultCli) { candidate ->
+                when (candidate) {
+                    AgentCli.CLAUDE ->
+                        ClaudeValidationService.getInstance().getClaudeCommand(settings.claudePath)
+                    AgentCli.CODEX ->
+                        CodexValidationService.getInstance().getCodexCommand(settings.codexPath)
+                }
             }
             val preflightMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - preflightStartedAtNanos)
             log.info(
-                "timing: ${cli.name.lowercase()} preflight resolve took $preflightMs ms" +
+                "timing: ${selectedCli.name.lowercase()} preflight resolve took $preflightMs ms" +
                     " → ${resolvedCommand?.executable ?: "not found"}"
             )
             ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
                 if (resolvedCommand == null) {
-                    log.warn("${cli.name.lowercase()} CLI not found at configured path or on PATH")
-                    showCliNotFoundError(project, toolWindow, cli, requestedManager)
+                    log.warn("${selectedCli.name.lowercase()} CLI not found at configured path or on PATH")
+                    showCliNotFoundError(project, toolWindow, selectedCli, requestedManager)
                     return@invokeLater
                 }
                 buildSessionTab(
                     project,
                     toolWindow,
                     changesVisible,
-                    cli,
+                    selectedCli,
                     resolvedCommand,
                     validManager(toolWindow, requestedManager),
                     splitRequest,
@@ -303,6 +306,7 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
         try {
             val settingsProvider = JBTerminalSystemSettingsProvider()
             val terminalWidget = JBTerminalWidget(project, settingsProvider, disposable)
+            terminalWidget.addMessageFilter(TerminalFileLinkFilter.forProject(project))
             val binding = SessionUiBinding(project, cli)
 
             // The picker takes focus so the press that closes it never reaches the terminal;

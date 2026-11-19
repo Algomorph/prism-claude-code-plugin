@@ -28,6 +28,18 @@ class SelectsConversationTest {
     }
 
     @Test
+    fun `attached resume arguments select the conversation`() {
+        assertTrue(selectsConversation(listOf("-r0b7c9a3e-0000-4000-8000-000000000000")))
+        assertTrue(selectsConversation(listOf("-rmy-conversation")))
+        assertTrue(selectsConversation(listOf("-r=abc")))
+    }
+
+    @Test
+    fun `unrelated long options starting with r leave the conversation to Prism`() {
+        assertFalse(selectsConversation(listOf("--replay-user-messages")))
+    }
+
+    @Test
     fun `an explicit session id selects the conversation, in either spelling`() {
         assertTrue(selectsConversation(listOf("--session-id", "0b7c9a3e-0000-4000-8000-000000000000")))
         assertTrue(selectsConversation(listOf("--session-id=0b7c9a3e-0000-4000-8000-000000000000")))
