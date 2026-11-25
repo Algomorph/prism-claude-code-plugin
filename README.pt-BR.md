@@ -186,6 +186,10 @@ Exclusões de snapshot aceitam nomes ou padrões curinga separados por vírgula,
 
 > No macOS, `Ctrl` = tecla Control física (não Cmd).
 
+#### Trocar de aba a partir de um chat
+
+Enquanto um chat tem o foco, as teclas que o seu mapa de teclas atribui a *Window › Active Tool Window › Select Next Tab* e *Select Previous Tab* trocam as abas do Prism, como no terminal da IDE (por exemplo `Ctrl+PageDown`/`Ctrl+PageUp` no mapa Eclipse, `Cmd+Shift+]`/`Cmd+Shift+[` no macOS). Setas com no máximo um modificador continuam com o agente, que as usa para mover o cursor, então os padrões `Alt+Left`/`Alt+Right` (Windows, Linux) e `Ctrl+Left`/`Ctrl+Right` (macOS) não trocam de aba a partir de um chat; atribua outra tecla a essas ações para usar uma.
+
 #### Colar no terminal do agente (Linux)
 
 No Linux, `Ctrl+V` inspeciona a área de transferência: se contiver uma imagem, os bytes são gravados em um PNG temporário e o caminho do arquivo é colado no prompt (o agente anexa o arquivo). Caso contrário, o texto da área de transferência é colado (envolto em escapes de bracketed paste, então conteúdo de múltiplas linhas não é submetido automaticamente). Use `Ctrl+Shift+V` para forçar uma colagem de texto puro. No macOS e Windows, `Ctrl+V` mantém o comportamento nativo do CLI do agente.

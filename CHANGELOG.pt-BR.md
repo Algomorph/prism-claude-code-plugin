@@ -15,6 +15,10 @@ e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0
   - **Alternativa**: um chat cuja conversa é desconhecida, ou cuja transcrição não existe mais, inicia uma nova conversa na mesma posição. Argumentos configurados que já selecionam uma conversa têm precedência.
   - **Escopo**: a lista é guardada por projeto, no arquivo de workspace dele, que não é compartilhado pelo controle de versão. Os chats restaurados abrem no painel principal, sem a divisão dos painéis.
 
+### Corrigido
+
+- **Troca de abas a partir de um chat**: as teclas de *Select Next Tab* e *Select Previous Tab* do mapa de teclas (Window › Active Tool Window) trocam as abas do Prism enquanto um chat tem o foco, como no terminal da IDE. Setas com no máximo um modificador continuam com o agente, que as usa para mover o cursor, então os padrões `Alt+Left`/`Alt+Right` (Windows, Linux) e `Ctrl+Left`/`Ctrl+Right` (macOS) não trocam de aba.
+
 ## [1.5.0] — 2026-11-19
 
 ### Adicionado

@@ -70,6 +70,24 @@ class TerminalKeyBindingsTest {
     }
 
     @Test
+    fun `a key a resolver claims runs its handler and is consumed, and others pass through`() {
+        val ctrlPageDown = KeyStroke.getKeyStroke(KeyEvent.VK_PAGE_DOWN, InputEvent.CTRL_DOWN_MASK)
+        var switched = 0
+        val claims = TerminalKeyBindings.KeyClaims().apply {
+            claim { stroke -> if (stroke == ctrlPageDown) ({ switched++ }) else null }
+        }
+        val claimed = press(KeyEvent.VK_PAGE_DOWN, InputEvent.CTRL_DOWN_MASK)
+        val other = press(KeyEvent.VK_PAGE_DOWN, 0)
+
+        claims.handle(claimed)
+        claims.handle(other)
+
+        assertTrue(claimed.isConsumed)
+        assertFalse(other.isConsumed)
+        assertEquals(1, switched)
+    }
+
+    @Test
     fun `a key the IDE shortcut already handled is not run again`() {
         var runs = 0
         val claims = TerminalKeyBindings.KeyClaims().apply { bind(ctrlV) { runs++ } }

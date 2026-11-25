@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fallback**: a chat whose conversation is unknown, or whose transcript is gone, starts a new conversation in the same position. Configured arguments that already select a conversation take precedence.
   - **Scope**: the list is kept per project in its workspace file, which is not shared through version control. Restored chats open in the main pane, without the split layout.
 
+### Fixed
+
+- **Tab switching from a chat**: the keymap's *Select Next Tab* and *Select Previous Tab* keys (Window › Active Tool Window) switch Prism tabs while a chat has focus, as in the IDE terminal. Arrow keys with at most one modifier stay with the agent, which uses them to move the cursor, so the default `Alt+Left`/`Alt+Right` (Windows, Linux) and `Ctrl+Left`/`Ctrl+Right` (macOS) do not switch tabs.
+
 ## [1.5.0] — 2026-11-19
 
 ### Added
