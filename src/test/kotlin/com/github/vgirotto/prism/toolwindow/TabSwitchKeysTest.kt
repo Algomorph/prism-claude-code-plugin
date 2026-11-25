@@ -5,7 +5,10 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import javax.swing.KeyStroke
 
-/** Which keys switch tabs from an agent terminal, for the shipped keymaps' Next/Previous Tab bindings. */
+/**
+ * Which keys switch tabs from an agent terminal, and which of them the agents also use, for the
+ * shipped keymaps' Next/Previous Tab bindings.
+ */
 class TabSwitchKeysTest {
 
     private fun keys(next: List<String>, previous: List<String>) = TabSwitchKeys { actionId ->
@@ -30,10 +33,11 @@ class TabSwitchKeysTest {
         assertEquals(TabStep.NEXT, eclipse.stepFor(stroke("ctrl F6")))
         assertEquals(TabStep.PREVIOUS, eclipse.stepFor(stroke("ctrl shift F6")))
         assertEquals(TabStep.NEXT, eclipse.stepFor(stroke("ctrl alt LEFT")))
+        assertEquals(emptyList<KeyStroke>(), eclipse.agentKeys())
     }
 
     @Test
-    fun `macOS's bracket keys switch tabs and its Ctrl+arrows stay with the agent`() {
+    fun `macOS's tab keys switch tabs, and its Ctrl+arrows are the agents' too`() {
         val mac = keys(
             next = listOf("meta shift CLOSE_BRACKET", "control RIGHT"),
             previous = listOf("meta shift OPEN_BRACKET", "control LEFT"),
@@ -41,16 +45,17 @@ class TabSwitchKeysTest {
 
         assertEquals(TabStep.NEXT, mac.stepFor(stroke("meta shift CLOSE_BRACKET")))
         assertEquals(TabStep.PREVIOUS, mac.stepFor(stroke("meta shift OPEN_BRACKET")))
-        assertNull(mac.stepFor(stroke("ctrl RIGHT")))
-        assertNull(mac.stepFor(stroke("ctrl LEFT")))
+        assertEquals(TabStep.NEXT, mac.stepFor(stroke("ctrl RIGHT")))
+        assertEquals(listOf(stroke("ctrl RIGHT"), stroke("ctrl LEFT")), mac.agentKeys())
     }
 
     @Test
-    fun `the default keymap's Alt+arrows stay with the agent`() {
+    fun `the default keymap's Alt+arrows switch tabs and are the agents' too`() {
         val default = keys(next = listOf("alt RIGHT"), previous = listOf("alt LEFT"))
 
-        assertNull(default.stepFor(stroke("alt RIGHT")))
-        assertNull(default.stepFor(stroke("alt LEFT")))
+        assertEquals(TabStep.NEXT, default.stepFor(stroke("alt RIGHT")))
+        assertEquals(TabStep.PREVIOUS, default.stepFor(stroke("alt LEFT")))
+        assertEquals(listOf(stroke("alt RIGHT"), stroke("alt LEFT")), default.agentKeys())
     }
 
     @Test

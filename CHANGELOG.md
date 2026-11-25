@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Tab switching from a chat**: the keymap's *Select Next Tab* and *Select Previous Tab* keys (Window › Active Tool Window) switch Prism tabs while a chat has focus, as in the IDE terminal. Arrow keys with at most one modifier stay with the agent, which uses them to move the cursor, so the default `Alt+Left`/`Alt+Right` (Windows, Linux) and `Ctrl+Left`/`Ctrl+Right` (macOS) do not switch tabs.
+- **Tab switching from a chat**: the keymap's *Select Next Tab* and *Select Previous Tab* keys (Window › Active Tool Window) switch Prism tabs while a chat has focus, as in the IDE terminal. **Settings › Tools › Prism › Keyboard** shows those keys, opens them in the keymap, and warns when they are keys Claude Code or Codex also use, such as the default `Alt+Left`/`Alt+Right` (Codex's word movement).
 
 ## [1.5.0] — 2026-11-19
 

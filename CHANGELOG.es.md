@@ -17,7 +17,7 @@ y este proyecto sigue el [Versionado Semántico](https://semver.org/spec/v2.0.0.
 
 ### Corregido
 
-- **Cambio de pestaña desde un chat**: las teclas de *Select Next Tab* y *Select Previous Tab* del mapa de teclas (Window › Active Tool Window) cambian las pestañas de Prism mientras un chat tiene el foco, como en el terminal del IDE. Las flechas con como máximo un modificador siguen siendo del agente, que las usa para mover el cursor, así que los valores predeterminados `Alt+Left`/`Alt+Right` (Windows, Linux) y `Ctrl+Left`/`Ctrl+Right` (macOS) no cambian de pestaña.
+- **Cambio de pestaña desde un chat**: las teclas de *Select Next Tab* y *Select Previous Tab* del mapa de teclas (Window › Active Tool Window) cambian las pestañas de Prism mientras un chat tiene el foco, como en el terminal del IDE. **Settings › Tools › Prism › Teclado** muestra esas teclas, las abre en el mapa de teclas y avisa cuando son teclas que Claude Code o Codex también usan, como los valores predeterminados `Alt+Left`/`Alt+Right` (movimiento por palabra de Codex).
 
 ## [1.5.0] — 2026-11-19
 
