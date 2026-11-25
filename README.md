@@ -187,7 +187,7 @@ Snapshot exclusions accept comma-separated names or wildcard patterns, for examp
 
 #### Switching tabs from a chat
 
-While a chat has focus, the keys your keymap assigns to *Window › Active Tool Window › Select Next Tab* and *Select Previous Tab* switch Prism tabs, as in the IDE terminal (for example `Ctrl+PageDown`/`Ctrl+PageUp` in the Eclipse keymap, `Cmd+Shift+]`/`Cmd+Shift+[` on macOS). Arrow keys with at most one modifier stay with the agent, which uses them to move the cursor, so the default `Alt+Left`/`Alt+Right` (Windows, Linux) and `Ctrl+Left`/`Ctrl+Right` (macOS) don't switch tabs from a chat; bind another key to those actions to use one.
+While a chat has focus, the keys your keymap assigns to *Window › Active Tool Window › Select Next Tab* and *Select Previous Tab* switch Prism tabs, as in the IDE terminal (for example `Ctrl+PageDown`/`Ctrl+PageUp` in the Eclipse, NetBeans and Sublime Text keymaps, `Cmd+Shift+]`/`Cmd+Shift+[` on macOS). In a chat, those keys no longer reach the agent: the default `Alt+Left`/`Alt+Right` (Windows, Linux) and `Ctrl+Left`/`Ctrl+Right` (macOS) are also Codex's word-movement keys. **Settings › Tools › Prism › Keyboard** shows the current keys, warns about such clashes, and links to the actions in the keymap.
 
 #### Paste in the agent terminal (Linux)
 

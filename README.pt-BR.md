@@ -187,7 +187,7 @@ Exclusões de snapshot aceitam nomes ou padrões curinga separados por vírgula,
 
 #### Trocar de aba a partir de um chat
 
-Enquanto um chat tem o foco, as teclas que o seu mapa de teclas atribui a *Window › Active Tool Window › Select Next Tab* e *Select Previous Tab* trocam as abas do Prism, como no terminal da IDE (por exemplo `Ctrl+PageDown`/`Ctrl+PageUp` no mapa Eclipse, `Cmd+Shift+]`/`Cmd+Shift+[` no macOS). Setas com no máximo um modificador continuam com o agente, que as usa para mover o cursor, então os padrões `Alt+Left`/`Alt+Right` (Windows, Linux) e `Ctrl+Left`/`Ctrl+Right` (macOS) não trocam de aba a partir de um chat; atribua outra tecla a essas ações para usar uma.
+Enquanto um chat tem o foco, as teclas que o seu mapa de teclas atribui a *Window › Active Tool Window › Select Next Tab* e *Select Previous Tab* trocam as abas do Prism, como no terminal da IDE (por exemplo `Ctrl+PageDown`/`Ctrl+PageUp` nos mapas Eclipse, NetBeans e Sublime Text, `Cmd+Shift+]`/`Cmd+Shift+[` no macOS). Em um chat, essas teclas deixam de chegar ao agente: os padrões `Alt+Left`/`Alt+Right` (Windows, Linux) e `Ctrl+Left`/`Ctrl+Right` (macOS) também são as teclas de movimento por palavra do Codex. **Settings › Tools › Prism › Teclado** mostra as teclas atuais, avisa sobre esses conflitos e leva às ações no mapa de teclas.
 
 #### Colar no terminal do agente (Linux)
 

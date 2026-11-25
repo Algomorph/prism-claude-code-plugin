@@ -24,15 +24,19 @@ internal enum class TabStep(val actionId: String) {
  *
  * With "Override IDE shortcuts" on, the terminal sends these keys to the agent, so they are
  * claimed on the terminal path; with it off, the IDE runs the actions itself. The keymap is read
- * on every press, so a rebinding applies at once. Chords are not matched, and neither are arrow
- * keys with at most one modifier: Claude Code and Codex use those to move the cursor, by word
- * and through history, so the default Alt+Left/Right and the macOS Ctrl+Left/Right stay theirs.
+ * on every press, so a rebinding applies at once. Chords are not matched.
  */
 internal class TabSwitchKeys(private val keymapStrokes: (String) -> List<KeyStroke> = ::activeKeymapStrokes) {
 
-    fun stepFor(stroke: KeyStroke): TabStep? =
-        if (isAgentCursorKey(stroke)) null
-        else TabStep.entries.firstOrNull { stroke in keymapStrokes(it.actionId) }
+    fun strokes(step: TabStep): List<KeyStroke> = keymapStrokes(step.actionId)
+
+    fun stepFor(stroke: KeyStroke): TabStep? = TabStep.entries.firstOrNull { stroke in strokes(it) }
+
+    /**
+     * The tab keys that Claude Code and Codex also use: arrow keys with at most one modifier move
+     * their cursor, by character, by word (Codex's Alt or Ctrl+Left/Right) and through history.
+     */
+    fun agentKeys(): List<KeyStroke> = TabStep.entries.flatMap(::strokes).filter(::isAgentCursorKey)
 
     private fun isAgentCursorKey(stroke: KeyStroke): Boolean =
         stroke.keyCode in ARROWS && Integer.bitCount(stroke.modifiers and MODIFIERS) <= 1

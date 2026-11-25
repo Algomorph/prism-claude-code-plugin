@@ -9,7 +9,7 @@ e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0
 
 ### Corrigido
 
-- **Troca de abas a partir de um chat**: as teclas de *Select Next Tab* e *Select Previous Tab* do mapa de teclas (Window › Active Tool Window) trocam as abas do Prism enquanto um chat tem o foco, como no terminal da IDE. Setas com no máximo um modificador continuam com o agente, que as usa para mover o cursor, então os padrões `Alt+Left`/`Alt+Right` (Windows, Linux) e `Ctrl+Left`/`Ctrl+Right` (macOS) não trocam de aba.
+- **Troca de abas a partir de um chat**: as teclas de *Select Next Tab* e *Select Previous Tab* do mapa de teclas (Window › Active Tool Window) trocam as abas do Prism enquanto um chat tem o foco, como no terminal da IDE. **Settings › Tools › Prism › Teclado** mostra essas teclas, abre-as no mapa de teclas e avisa quando são teclas que o Claude Code ou o Codex também usam, como os padrões `Alt+Left`/`Alt+Right` (movimento por palavra do Codex).
 
 ## [1.5.0] — 2026-11-19
 
