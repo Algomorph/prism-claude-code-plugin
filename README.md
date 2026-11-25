@@ -185,6 +185,10 @@ Snapshot exclusions accept comma-separated names or wildcard patterns, for examp
 
 > On macOS, `Ctrl` refers to the physical Control key (not Cmd).
 
+#### Switching tabs from a chat
+
+While a chat has focus, the keys your keymap assigns to *Window › Active Tool Window › Select Next Tab* and *Select Previous Tab* switch Prism tabs, as in the IDE terminal (for example `Ctrl+PageDown`/`Ctrl+PageUp` in the Eclipse keymap, `Cmd+Shift+]`/`Cmd+Shift+[` on macOS). Arrow keys with at most one modifier stay with the agent, which uses them to move the cursor, so the default `Alt+Left`/`Alt+Right` (Windows, Linux) and `Ctrl+Left`/`Ctrl+Right` (macOS) don't switch tabs from a chat; bind another key to those actions to use one.
+
 #### Paste in the agent terminal (Linux)
 
 On Linux, `Ctrl+V` inspects the system clipboard: if it holds an image, the image bytes are written to a temporary PNG and the file path is pasted into the prompt (the agent attaches the file). Otherwise the clipboard text is pasted (wrapped in bracketed-paste escapes, so multi-line content doesn't auto-submit). Use `Ctrl+Shift+V` to force a plain-text paste. On macOS and Windows, `Ctrl+V` keeps its native agent CLI behavior.

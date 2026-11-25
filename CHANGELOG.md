@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Tab switching from a chat**: the keymap's *Select Next Tab* and *Select Previous Tab* keys (Window › Active Tool Window) switch Prism tabs while a chat has focus, as in the IDE terminal. Arrow keys with at most one modifier stay with the agent, which uses them to move the cursor, so the default `Alt+Left`/`Alt+Right` (Windows, Linux) and `Ctrl+Left`/`Ctrl+Right` (macOS) do not switch tabs.
+
 ## [1.5.0] — 2026-11-19
 
 ### Added

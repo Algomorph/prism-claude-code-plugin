@@ -5,6 +5,12 @@ Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 y este proyecto sigue el [Versionado Semántico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Corregido
+
+- **Cambio de pestaña desde un chat**: las teclas de *Select Next Tab* y *Select Previous Tab* del mapa de teclas (Window › Active Tool Window) cambian las pestañas de Prism mientras un chat tiene el foco, como en el terminal del IDE. Las flechas con como máximo un modificador siguen siendo del agente, que las usa para mover el cursor, así que los valores predeterminados `Alt+Left`/`Alt+Right` (Windows, Linux) y `Ctrl+Left`/`Ctrl+Right` (macOS) no cambian de pestaña.
+
 ## [1.5.0] — 2026-11-19
 
 ### Añadido

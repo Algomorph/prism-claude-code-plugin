@@ -5,6 +5,12 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 O formato é baseado no [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 e este projeto segue o [Versionamento Semântico](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Corrigido
+
+- **Troca de abas a partir de um chat**: as teclas de *Select Next Tab* e *Select Previous Tab* do mapa de teclas (Window › Active Tool Window) trocam as abas do Prism enquanto um chat tem o foco, como no terminal da IDE. Setas com no máximo um modificador continuam com o agente, que as usa para mover o cursor, então os padrões `Alt+Left`/`Alt+Right` (Windows, Linux) e `Ctrl+Left`/`Ctrl+Right` (macOS) não trocam de aba.
+
 ## [1.5.0] — 2026-11-19
 
 ### Adicionado

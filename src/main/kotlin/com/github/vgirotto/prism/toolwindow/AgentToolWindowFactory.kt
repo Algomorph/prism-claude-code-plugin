@@ -400,6 +400,10 @@ class AgentToolWindowFactory : ToolWindowFactory, DumbAware {
             content.icon = PrismIcons.forCli(cli)
             content.putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
             content.description = cli.displayName()
+            content.preferredFocusableComponent = terminalWidget.terminalPanel
+
+            val tabSwitch = TabSwitchKeys()
+            keys.claim { stroke -> tabSwitch.stepFor(stroke)?.let { step -> { content.manager?.let(step::selectIn) } } }
 
             // The session lives and dies with the tab, and only tab *disposal* means the
             // tab is gone. Reordering tabs by dragging one removes its Content with

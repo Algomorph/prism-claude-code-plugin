@@ -39,9 +39,15 @@ internal class TerminalKeyBindings(private val widget: JBTerminalWidget, private
         claims.bind(keyStroke, handler)
     }
 
+    /** Claims, on the terminal path only, each key [resolve] returns a handler for when it is pressed. */
+    fun claim(resolve: (KeyStroke) -> (() -> Unit)?) {
+        claims.claim(resolve)
+    }
+
     /** The terminal-path half: claims bound key presses before the terminal panel handles them. */
     internal class KeyClaims {
         private val handlers = mutableMapOf<KeyStroke, () -> Unit>()
+        private val resolvers = mutableListOf<(KeyStroke) -> (() -> Unit)?>()
 
         /** Set while a claimed key is down, so its typed character (^V, Enter) stays out of the PTY. */
         private var swallowTyped = false
@@ -50,12 +56,17 @@ internal class TerminalKeyBindings(private val widget: JBTerminalWidget, private
             handlers[keyStroke] = handler
         }
 
+        fun claim(resolve: (KeyStroke) -> (() -> Unit)?) {
+            resolvers += resolve
+        }
+
         fun handle(event: KeyEvent) {
             when (event.id) {
                 KeyEvent.KEY_PRESSED -> {
                     swallowTyped = false
                     if (event.isConsumed) return
-                    val handler = handlers[KeyStroke.getKeyStrokeForEvent(event)] ?: return
+                    val stroke = KeyStroke.getKeyStrokeForEvent(event)
+                    val handler = handlers[stroke] ?: resolvers.firstNotNullOfOrNull { it(stroke) } ?: return
                     event.consume()
                     swallowTyped = true
                     handler()
